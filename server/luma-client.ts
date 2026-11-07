@@ -1,4 +1,4 @@
-import { PRIVATE_DATA_DIR, VIDEO_MODEL, VIDEO_INPUT_TEMPLATE } from "./config";
+import { PRIVATE_DATA_DIR, VIDEO_MODEL, VIDEO_INPUT_TEMPLATE, VIDEO_CLIP_SECONDS } from "./config";
 import Replicate from "replicate";
 import fs from "fs";
 import path from "path";
@@ -92,6 +92,10 @@ export function buildVideoInput(imageUrl: string | Buffer, prompt: string, aspec
       sample_shift: 8,
       fast_mode: "Balanced",
     };
+  }
+
+  if (VIDEO_MODEL.startsWith("kwaivgi/kling")) {
+    return { prompt, start_image: imageUrl, duration: VIDEO_CLIP_SECONDS };
   }
 
   // Unknown model: most image-to-video models take a prompt plus an image called

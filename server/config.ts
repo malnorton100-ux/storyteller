@@ -74,3 +74,5 @@ export function parseAiJson(raw: string | null | undefined): any {
  */
 export const VIDEO_MODEL = process.env.REPLICATE_VIDEO_MODEL || "wavespeedai/wan-2.1-i2v-480p";
 export const VIDEO_INPUT_TEMPLATE = process.env.REPLICATE_VIDEO_INPUT || "";
+/** Length of each AI clip in seconds (Kling: 5 or 10). Longer = smoother movies with narration, ~2x the cost. */
+export const VIDEO_CLIP_SECONDS = Number(process.env.VIDEO_CLIP_SECONDS || 10) >= 8 ? 10 : 5;
