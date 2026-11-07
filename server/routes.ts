@@ -13,6 +13,7 @@ import { PUBLIC_DATA_DIR, TEXT_MODEL, parseAiJson } from "./config";
 import express from "express";
 import crypto from "crypto";
 import fs from "fs";
+import { execFileSync } from "child_process";
 import path from "path";
 
 const illustrationJobs = new Map<string, { status: "generating" | "complete" | "failed" | "cancelled"; totalScenes: number; completedScenes: number; storyId: number; cancelled?: boolean }>();
@@ -1758,7 +1759,15 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       const imageToBase64 = (relUrl: string): string => {
         try {
-          const filePath = path.join(PUBLIC_DATA_DIR, relUrl);
+          let filePath = path.join(PUBLIC_DATA_DIR, relUrl);
+          // Book-sized JPEG copy (~200 KB instead of ~2 MB) so the PDF is small enough to email.
+          const small = filePath.replace(/\.(png|jpe?g)$/i, "") + ".book.jpg";
+          if (fs.existsSync(filePath) && !fs.existsSync(small)) {
+            try {
+              execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", filePath, "-vf", "scale='min(1400,iw)':-2", "-q:v", "4", small], { timeout: 20000 });
+            } catch {}
+          }
+          if (fs.existsSync(small)) filePath = small;
           if (fs.existsSync(filePath)) {
             const data = fs.readFileSync(filePath);
             const ext = path.extname(filePath).replace(".", "").toLowerCase();
@@ -1771,7 +1780,33 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       const createdDate = story.createdAt ? new Date(story.createdAt).toLocaleDateString("en-AU", { year: "numeric", month: "long", day: "numeric", timeZone: process.env.APP_TIMEZONE || "Australia/Brisbane" }) : "";
 
-      const totalPages = 1 + (story.giftMessage ? 1 : 0) + 1 + illustrationsList.length + 1;
+      const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      // Give each picture its part of the story, in order, like a picture book.
+      // Pictures were made by splitting the story evenly, so an even split of the
+      // sentences lines up with them.
+      const passages: string[][] = (() => {
+        const n = illustrationsList.length;
+        if (n === 0) return [];
+        const paras = story.content.split(/\n+/).map((p) => p.trim()).filter(Boolean);
+        const sentences: { text: string; newPara: boolean }[] = [];
+        paras.forEach((p) => {
+          const parts = p.match(/[^.!?]+[.!?]+["'\u201D\u2019)]*\s*|[^.!?]+$/g) || [p];
+          parts.forEach((t, i) => t.trim() && sentences.push({ text: t.trim(), newPara: i === 0 }));
+        });
+        const total = sentences.reduce((a, x) => a + x.text.length, 0) || 1;
+        const out: string[][] = Array.from({ length: n }, () => []);
+        let acc = 0;
+        sentences.forEach((x) => {
+          const mid = acc + x.text.length / 2;
+          const idx = Math.min(n - 1, Math.floor((mid / total) * n));
+          const page = out[idx];
+          if (page.length === 0 || x.newPara) page.push(x.text);
+          else page[page.length - 1] += " " + x.text;
+          acc += x.text.length;
+        });
+        return out;
+      })();
+      const totalPages = 1 + (story.giftMessage ? 1 : 0) + (illustrationsList.length ? 0 : 1) + illustrationsList.length + 1;
 
       let html = `<!DOCTYPE html>
 <html lang="en">
@@ -1806,6 +1841,11 @@ html, body {
 .page:last-child {
   page-break-after: auto;
 }
+.illustration-page { display: flex; flex-direction: column; align-items: center; padding-top: 18mm; }
+.illustration-page .illustration-image-wrapper img { max-height: 150mm; width: auto; max-width: 100%; }
+.page-text { margin-top: 9mm; max-width: 150mm; font-size: 15pt; line-height: 1.6; color: #3C2415; text-align: left; }
+.page-text p { margin: 0 0 4mm; }
+.page-text.first p:first-child::first-letter { float: left; font-size: 3.2em; line-height: 0.9; padding: 1mm 2mm 0 0; color: #8B3A0F; font-weight: 700; }
 .page-number {
   position: absolute;
   bottom: 15mm;
@@ -2034,7 +2074,13 @@ html, body {
 #book { transform-origin: top left; }
 @media print {
   .save-bar { display: none !important; }
-  body { background: white; }
+  /* Phones add their own print margins, so a full 297mm page spilled onto a
+     blank second sheet. Pages size to their content and break cleanly. */
+  .page { width: 100% !important; min-height: 0 !important; height: auto !important; padding: 12mm 16mm !important; break-after: page; page-break-after: always; break-inside: avoid; }
+  .page:last-child { break-after: auto; page-break-after: auto; }
+  .cover-page { min-height: 255mm !important; }
+  .page-number { position: static !important; margin-top: 8mm; }
+  html, body { background: #FFFBF5 !important; }
   .page { margin: 0; box-shadow: none; }
 }
 @media screen {
@@ -2083,7 +2129,9 @@ html, body {
         html += `</div>`;
       }
 
-      // --- Story Text Page ---
+      // --- Story Text Page (only when there are no pictures; otherwise the
+      // story is told under the pictures) ---
+      if (illustrationsList.length === 0) {
       pageNum++;
       html += `<div class="page story-page">`;
       html += `<h2>${story.title}</h2>`;
@@ -2097,6 +2145,7 @@ html, body {
       html += `</div>`;
       html += `<div class="page-number">${pageNum}</div>`;
       html += `</div>`;
+      }
 
       // --- Illustration Pages ---
       for (let i = 0; i < illustrationsList.length; i++) {
@@ -2104,13 +2153,13 @@ html, body {
         const ill = illustrationsList[i];
         const imgSrc = imageToBase64(ill.imageUrl);
         html += `<div class="page illustration-page">`;
-        html += `<div class="illustration-scene-label">Scene ${i + 1} of ${illustrationsList.length}</div>`;
-        html += `<div class="illustration-image-wrapper"><img src="${imgSrc}" alt="${ill.sceneCaption || `Scene ${i + 1}`}"></div>`;
-        if (ill.sceneCaption) {
-          html += `<div class="illustration-caption">${ill.sceneCaption}</div>`;
-        }
-        if (ill.customText) {
-          html += `<div class="illustration-custom-text">${ill.customText}</div>`;
+        html += `<div class="illustration-image-wrapper"><img src="${imgSrc}" alt="${esc(ill.sceneCaption || `Scene ${i + 1}`)}"></div>`;
+        // The words for this picture: what the storyteller wrote for it, or their story's own words.
+        const words = ill.customText ? [ill.customText] : passages[i] || [];
+        if (words.length) {
+          html += `<div class="page-text${i === 0 ? " first" : ""}">${words.map((p) => `<p>${esc(p)}</p>`).join("")}</div>`;
+        } else if (ill.sceneCaption) {
+          html += `<div class="illustration-caption">${esc(ill.sceneCaption)}</div>`;
         }
         html += `<div class="page-number">${pageNum}</div>`;
         html += `</div>`;
