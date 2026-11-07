@@ -708,7 +708,14 @@ Respond in valid JSON format ONLY:
           const storybook = (await storage.getIllustrations(storyId))
             .filter((ill) => ill.style === style && ill.imageUrl && fs.existsSync(path.join(PUBLIC_DATA_DIR, ill.imageUrl)))
             .sort((a, b) => (a.sceneOrder ?? 0) - (b.sceneOrder ?? 0))
-            .slice(0, 6);
+            // At most 6 scenes, spread across the whole story so the ending is
+            // never cut off (always keeps the first and last picture).
+            .filter((_, i, all) => {
+              const k = Math.min(6, all.length);
+              if (all.length <= k) return true;
+              const picks = new Set(Array.from({ length: k }, (_, j) => Math.round((j * (all.length - 1)) / (k - 1))));
+              return picks.has(i);
+            });
           if (storybook.length >= 2) {
             console.log(`[VideoGen] Reusing ${storybook.length} storybook pictures for the movie`);
             let lines: { caption: string; action: string }[] = [];
