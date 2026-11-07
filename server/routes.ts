@@ -1769,7 +1769,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
         return relUrl;
       };
 
-      const createdDate = story.createdAt ? new Date(story.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "";
+      const createdDate = story.createdAt ? new Date(story.createdAt).toLocaleDateString("en-AU", { year: "numeric", month: "long", day: "numeric", timeZone: process.env.APP_TIMEZONE || "Australia/Brisbane" }) : "";
 
       const totalPages = 1 + (story.giftMessage ? 1 : 0) + 1 + illustrationsList.length + 1;
 
@@ -2027,9 +2027,11 @@ html, body {
   line-height: 1.8;
 }
 
-.save-bar { position: sticky; top: 0; z-index: 10; display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: #fdf8f1; border-bottom: 1px solid #e8dccb; font-family: Lora, Georgia, serif; }
+.save-bar { position: sticky; top: 0; left: 0; right: 0; width: 100%; z-index: 10; display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: #fdf8f1; border-bottom: 1px solid #e8dccb; font-family: Lora, Georgia, serif; }
 .save-bar button { font: inherit; font-size: 18px; background: #c2570c; color: #fff; border: 0; border-radius: 10px; padding: 12px 22px; cursor: pointer; }
-.save-bar span { font-size: 14px; color: #7a6a5c; }
+.save-bar button.close { background: #fff; color: #3C2415; border: 1px solid #d9c8b4; }
+.save-bar span { font-size: 14px; color: #7a6a5c; width: 100%; text-align: center; }
+#book { transform-origin: top left; }
 @media print {
   .save-bar { display: none !important; }
   body { background: white; }
@@ -2044,7 +2046,8 @@ html, body {
 </style>
 </head>
 <body>
-<div class="save-bar"><button onclick="window.print()">Save as PDF / Print</button><span>On iPhone: tap the button, then Share → Save to Files</span></div>`;
+<div class="save-bar"><button class="close" onclick="closeBook()">✕ Close</button><button onclick="window.print()">Save as PDF / Print</button><span>On iPhone: tap Save, then Share → Save to Files</span></div>
+<div id="book">`;
 
       let pageNum = 0;
 
@@ -2132,7 +2135,32 @@ html, body {
       html += `<div class="page-number">${pageNum}</div>`;
       html += `</div>`;
 
-      html += `</body></html>`;
+      html += `</div>
+<script>
+function closeBook() {
+  window.close();
+  setTimeout(function () { location.href = "/stories/${storyId}"; }, 150);
+}
+// Fit the A4 pages to the phone's screen (printing still uses full A4).
+function fitBook() {
+  var book = document.getElementById("book");
+  var page = book.querySelector(".page");
+  if (!page) return;
+  book.style.transform = ""; book.style.width = ""; book.style.height = "";
+  var pageW = page.offsetWidth + 40;
+  var scale = Math.min(1, window.innerWidth / pageW);
+  if (scale < 1) {
+    book.style.width = pageW + "px";
+    book.style.transform = "scale(" + scale + ")";
+    book.style.height = (book.scrollHeight * scale) + "px";
+  }
+}
+window.addEventListener("load", fitBook);
+window.addEventListener("resize", fitBook);
+window.addEventListener("beforeprint", function () { var b = document.getElementById("book"); b.style.transform = ""; b.style.width = ""; b.style.height = ""; });
+window.addEventListener("afterprint", fitBook);
+</script>
+</body></html>`;
 
       res.setHeader("Content-Type", "text/html");
       // Open in the browser (not a file download) so it can be read and saved as a PDF.
