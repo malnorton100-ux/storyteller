@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertStorySchema } from "@shared/schema";
 import { openai, ensureCompatibleFormat, speechToText, textToSpeech } from "./replit_integrations/audio/client";
 import { generateImageBuffer, generateImageWithReference } from "./replit_integrations/image/client";
-import { generateVideoFromScenes, cleanUpVideoLeftovers } from "./video-generator";
+import { generateVideoFromScenes, generatePreviewMovie, cleanUpVideoLeftovers } from "./video-generator";
 import { sendEmail, movieReadyEmail, movieFailedEmail } from "./email";
 import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma-client";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
@@ -809,11 +809,37 @@ Return ONLY a JSON array of ${storybook.length} objects: [{"caption": "...", "ac
               cancelledVideoIds.delete(video.id);
               return;
             }
+
+            // Quick preview first (about a minute): pans, zooms, fades and narration.
+            // The full animated movie replaces it when it's done.
+            let preview: { id: number; videoUrl?: string | null } | null = null;
+            try {
+              const pv = await storage.createStoryVideo({ storyId, style: "preview", status: "generating", scenes: reusedScenes });
+              preview = pv;
+              const previewUrl = await generatePreviewMovie(reusedImages, `preview-${storyId}-${video.id}-${Date.now()}.mp4`, narrationFor());
+              await storage.updateStoryVideo(pv.id, { storyId, style: "preview", status: "complete", videoUrl: previewUrl, scenes: reusedScenes });
+              preview = { id: pv.id, videoUrl: previewUrl };
+            } catch (e: any) {
+              console.warn("[VideoGen] Quick preview failed (full movie continues):", e?.message);
+              if (preview) { try { await storage.deleteStoryVideo(preview.id); } catch {} preview = null; }
+            }
+            const removePreview = async () => {
+              if (!preview) return;
+              try {
+                await storage.deleteStoryVideo(preview.id);
+                if (preview.videoUrl) fs.unlinkSync(path.join(PUBLIC_DATA_DIR, preview.videoUrl));
+              } catch {}
+            };
+            if (cancelledVideoIds.has(video.id)) {
+              cancelledVideoIds.delete(video.id);
+              return;
+            }
             const reusedUrl = await withTimeLimit(
               generateVideoFromScenes(reusedImages, `story-${storyId}-${video.id}-${Date.now()}.mp4`, story.title, narrationFor()),
               MOVIE_TIME_LIMIT_MS
             );
             await storage.updateStoryVideo(video.id, { storyId, style, status: "complete", videoUrl: reusedUrl, scenes: reusedScenes });
+            await removePreview();
             await notify(true);
             return;
           }
