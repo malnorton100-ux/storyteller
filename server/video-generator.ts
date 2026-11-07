@@ -368,7 +368,9 @@ export async function generateVideoFromScenes(
   const failedScenes: number[] = [];
   let creditError: string | null = null;
 
-  const CONCURRENCY = 2;
+  // Animate all scenes at the same time (Replicate runs them in parallel), so a
+  // 4-scene movie takes about as long as one clip instead of two rounds.
+  const CONCURRENCY = Number(process.env.VIDEO_PARALLEL_SCENES || 4);
   let nextIdx = 0;
 
   async function processClip(): Promise<void> {
