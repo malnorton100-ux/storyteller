@@ -1324,6 +1324,43 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
     }
   });
 
+  // Add several photos at once (the guided selfie step) and study the face once.
+  app.post("/api/storyteller-profiles/:id/photos/batch", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const photos: string[] = Array.isArray(req.body?.photos) ? req.body.photos.filter((p: any) => typeof p === "string" && p.length > 0).slice(0, 6) : [];
+      if (photos.length === 0) return res.status(400).json({ error: "Photos are required" });
+
+      const profile = await storage.getStorytellerProfile(id);
+      if (!profile) return res.status(404).json({ error: "Profile not found" });
+
+      const photoDir = path.join(PUBLIC_DATA_DIR, "images", "profiles");
+      if (!fs.existsSync(photoDir)) fs.mkdirSync(photoDir, { recursive: true });
+      const newUrls: string[] = [];
+      photos.forEach((photo, i) => {
+        const filename = `profile-${id}-extra-${Date.now()}-${i}.jpg`;
+        fs.writeFileSync(path.join(photoDir, filename), Buffer.from(photo, "base64"));
+        newUrls.push(`/images/profiles/${filename}`);
+      });
+
+      const updatedAdditional = [...(profile.additionalPhotos || []), ...newUrls];
+      const allPhotos: { base64: string; url: string }[] = [];
+      for (const url of [profile.photoUrl, ...updatedAdditional].filter(Boolean) as string[]) {
+        const filePath = path.join(PUBLIC_DATA_DIR, url);
+        if (fs.existsSync(filePath)) allPhotos.push({ base64: fs.readFileSync(filePath).toString("base64"), url });
+      }
+      const appearanceDescription = await analyzeAppearanceFromPhotos(allPhotos);
+      const updated = await storage.updateStorytellerProfile(id, {
+        additionalPhotos: updatedAdditional,
+        appearanceDescription: appearanceDescription || profile.appearanceDescription,
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error adding photos:", error);
+      res.status(500).json({ error: "Failed to add photos" });
+    }
+  });
+
   app.delete("/api/storyteller-profiles/:id/photos", async (req, res) => {
     try {
       const id = parseInt(req.params.id);

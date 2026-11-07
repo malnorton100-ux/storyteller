@@ -340,6 +340,18 @@ export default function StoryDetail() {
   const hasPdfPurchase = storyPurchases?.some(p => p.productType === "pdf_download" || p.productType === "bundle_download") ?? false;
   const hasVideoPurchase = storyPurchases?.some(p => p.productType === "video_download" || p.productType === "bundle_download") ?? false;
 
+  // Arriving from the guided start: pick up the picture job it already started.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const job = params.get("job");
+    if (!job) return;
+    setIllustrationJobId(job);
+    setIsGeneratingIllustrations(true);
+    setIllustrationStartedAt(Date.now());
+    setIllustrationProgress({ completed: 0, total: parseInt(params.get("total") || "2") || 2 });
+    window.history.replaceState({}, "", `/stories/${storyId}`);
+  }, [storyId]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success" && params.get("session_id")) {
