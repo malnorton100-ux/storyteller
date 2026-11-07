@@ -309,14 +309,22 @@ Respond in JSON:
         messages: [
           {
             role: "system",
-            content: `You break personal stories into exactly ${sceneCount} key visual scenes. Spread the story evenly across all ${sceneCount} scenes.
+            content: `You are turning a personal story into a ${sceneCount}-page illustrated picture book, like a classic children's picture book.
 
-For each scene, output a short caption (10 words max) and a detailed visual description (2-3 sentences).
-Each description must be a CANDID moment from a storybook, like a still from a film:
-- the storyteller is DOING something and absorbed in it (hammering, racing, laughing, crashing) - never posing, never looking at the camera
-- name the storyteller's EMOTION and facial expression in that moment (gritted-teeth concentration, wide-eyed thrill, shock, helpless laughter, pride)
-- vary the camera: wide shot, low angle, over-the-shoulder, close-up, side-on action shot - not the same framing twice in a row
-Also describe, ONCE, every object or place that appears in more than one scene (e.g. the billycart, the family car, the dog, the house), in precise visual detail: shape, colour, material, wheels, markings. Then use that exact same description wherever it appears.
+STEP 1 - THE WORDS. Split the story's OWN WORDS into exactly ${sceneCount} pages, in order. Each page's "text" is a contiguous passage copied word-for-word from the story (do not rewrite, add or drop anything). Together the pages contain the whole story. Split at natural moments so each page is ONE clear moment, roughly even in length.
+
+STEP 2 - THE PICTURE for each page shows EXACTLY what that page's text describes - the reader looks from the words to the picture and it makes sense. If the text mentions mums with tea towels, show the mums; if it mentions a horse, show the horse; if it mentions a wheel coming off, show the wheel flying away.
+
+MAKE THE BOOK VISUALLY VARIED - every page must look clearly different from the others:
+- different main subject: people, places, crowds, animals, close-up details (hands at work, a bouncing wheel, a face), not the same object every page
+- a recurring object (e.g. a cart, a car) only appears where the text involves it, and is the main subject on at most a third of the pages
+- different shot each page: wide establishing shot, crowd scene, mid shot, close-up of hands or a face, low angle, high angle looking down a street, over-the-shoulder
+- different setting or time of day where the story allows
+- the storyteller appears on most pages, caught mid-action and absorbed in the moment (never posing or looking at the camera), with a named emotion. Other people the text mentions SHOULD appear.
+- If the story ends by looking back from the present day (e.g. "it's in my shed now"), make the LAST page a present-day scene of the storyteller as they look TODAY, and set "present": true for it.
+
+For each page also give a short caption (10 words max).
+Also describe, ONCE, every object or place that appears on more than one page, in precise visual detail (shape, colour, material, wheels, markings), and reuse that exact description wherever it appears.
 
 ${contentRating === "G" ? "Make ALL descriptions fully family-friendly. No violence, gore, injuries, or danger." : ""}
 ${contentRating === "PG" ? "Keep dramatic tension but soften graphic violence." : ""}
@@ -331,18 +339,18 @@ ${storytellerIsChild ? "CHILD RULES: Small body, smooth skin, NO tattoos, NO fac
 ${otherCharsSimple ? `Other characters in the story: ${otherCharsSimple}. (These are secondary — just make them look reasonable for their role. Do NOT make them look like the storyteller.)` : ""}
 
 RULES:
-1. Write [STORYTELLER] after the storyteller character in every scene description so the image AI knows who they are.
-2. In EVERY scene, repeat the storyteller's EXACT physical description: their height, body build, face shape, skin tone, hair color/style, and outfit. Copy-paste level consistency.
-3. The storyteller is EXACTLY ${storytellerAge} in ALL scenes — their body size and proportions NEVER change. ${storytellerIsChild ? `A ${storytellerAge} child is SMALL — shorter than adults, thin limbs, round face. They do NOT grow taller or more muscular in later scenes.` : ""}
+1. Write [STORYTELLER] after the storyteller character in every page description where they appear, so the image AI knows who they are.
+2. Wherever the storyteller appears, repeat their EXACT physical description: height, build, face shape, skin tone, hair colour/style, and outfit. Copy-paste level consistency.
+3. Except on a "present": true page, the storyteller is EXACTLY ${storytellerAge} on every page — their body size and proportions NEVER change. ${storytellerIsChild ? `A ${storytellerAge} child is SMALL — shorter than adults, thin limbs, round face. They do NOT grow taller or more muscular in later scenes.` : ""}
 4. Same outfit in every scene: ${storytellerOutfit || "as described above"}.
 5. Other characters just need their role mentioned (e.g. "his dad" or "her friend") — don't over-describe them. NEVER describe an adult character with the storyteller's features.
-6. Only TWO characters maximum per scene when possible. Avoid extra background figures.
+6. Show the people the page's text mentions; keep faces of background figures simple.
 
 Respond in valid JSON format ONLY:
 {
   "recurring": "precise description of each object/place that appears in more than one scene, or empty string",
   "scenes": [
-  ${Array.from({ length: sceneCount }, () => '{"caption": "...", "description": "...", "emotion": "...", "camera": "..."}').join(",\n  ")}
+  ${Array.from({ length: sceneCount }, () => '{"text": "exact words from the story for this page", "caption": "...", "description": "what the picture shows", "emotion": "...", "camera": "...", "present": false}').join(",\n  ")}
   ]
 }`
           },
@@ -351,7 +359,7 @@ Respond in valid JSON format ONLY:
         max_completion_tokens: sceneCount <= 4 ? 8000 : 12000,
       });
 
-      let scenes: { caption: string; description: string; emotion?: string; camera?: string }[] = [];
+      let scenes: { caption: string; description: string; emotion?: string; camera?: string; text?: string; present?: boolean }[] = [];
       let recurringObjects = "";
       try {
         const rawContent = sceneSplitResponse.choices[0]?.message?.content || "[]";
@@ -443,6 +451,7 @@ Respond in valid JSON format ONLY:
             style,
             prompt: prompt0,
             sceneCaption: scene0.caption,
+            pageText: scene0.text || null,
             sceneOrder: 1,
           });
           completedCount++;
@@ -460,7 +469,10 @@ Respond in valid JSON format ONLY:
         if (job?.cancelled) throw new Error("Job cancelled");
 
         const i = consistencyRefPath ? idx + 1 : idx;
-        const sceneCharGuide = storytellerIsChild
+        const isPresent = scene.present === true && !!profilePhotoPath && fs.existsSync(profilePhotoPath);
+        const sceneCharGuide = isPresent
+          ? `PRESENT DAY: this page shows the storyteller [STORYTELLER] as they look TODAY - match the person in the reference photo exactly, at their real current age. Not a child.`
+          : storytellerIsChild
           ? `The reference image shows the storyteller [STORYTELLER] as a child/teen. Match them EXACTLY — same face, same hair, same body size, same outfit (${storytellerOutfit}). Age: ${storytellerAge}. They must look identical across all scenes. Any adults are DIFFERENT people.`
           : `THE STORYTELLER [STORYTELLER]: ${storytellerDesc}. Age: ${storytellerAge}. Outfit: ${storytellerOutfit}. Must look IDENTICAL to the person in the reference image. They are the STAR.`;
         const prompt = `Illustrate this personal memory scene: "${scene.description}". ${sceneDirection(scene)} ${sceneCharGuide} ${appearanceInstruction}${styleInstruction} No text or words in the image. Make it warm, emotional, and nostalgic.`;
@@ -470,7 +482,9 @@ Respond in valid JSON format ONLY:
           try {
             // Face from the portrait, outfit/objects/style from page 1 - so pages
             // don't all inherit page 1's pose.
-            imageBuffer = effectiveRefPath && fs.existsSync(effectiveRefPath)
+            imageBuffer = isPresent
+              ? await generateImageWithReference(profilePhotoPath!, prompt, "1024x1024", consistencyRefPath)
+              : effectiveRefPath && fs.existsSync(effectiveRefPath)
               ? await generateImageWithReference(effectiveRefPath, prompt, "1024x1024", consistencyRefPath)
               : await generateImageWithReference(consistencyRefPath, prompt, "1024x1024");
           } catch {
@@ -493,6 +507,7 @@ Respond in valid JSON format ONLY:
           style,
           prompt,
           sceneCaption: scene.caption,
+          pageText: scene.text || null,
           sceneOrder: i + 1,
         });
         completedCount++;
@@ -2155,7 +2170,7 @@ html, body {
         html += `<div class="page illustration-page">`;
         html += `<div class="illustration-image-wrapper"><img src="${imgSrc}" alt="${esc(ill.sceneCaption || `Scene ${i + 1}`)}"></div>`;
         // The words for this picture: what the storyteller wrote for it, or their story's own words.
-        const words = ill.customText ? [ill.customText] : passages[i] || [];
+        const words = ill.customText ? [ill.customText] : (ill as any).pageText ? String((ill as any).pageText).split(/\n+/).filter(Boolean) : passages[i] || [];
         if (words.length) {
           html += `<div class="page-text${i === 0 ? " first" : ""}">${words.map((p) => `<p>${esc(p)}</p>`).join("")}</div>`;
         } else if (ill.sceneCaption) {

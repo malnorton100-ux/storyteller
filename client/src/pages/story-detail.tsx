@@ -747,7 +747,11 @@ export default function StoryDetail() {
                     ))}
                   </div>
                 )}
-                {img.sceneCaption && <span className="block text-white/60 text-xs mt-1">{img.customText || img.sceneCaption}</span>}
+                {(img.customText || (img as any).pageText || img.sceneCaption) && (
+                  <span className={`block mt-2 mx-auto max-w-xl ${img.customText || (img as any).pageText ? "text-white/90 text-base leading-relaxed" : "text-white/60 text-xs"}`}>
+                    {img.customText || (img as any).pageText || img.sceneCaption}
+                  </span>
+                )}
               </div>
             </div>
           </div>
