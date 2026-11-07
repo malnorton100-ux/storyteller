@@ -55,6 +55,7 @@ async function ensureAuthSchema() {
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at timestamp DEFAULT CURRENT_TIMESTAMP`,
     `ALTER TABLE stories ADD COLUMN IF NOT EXISTS user_id varchar REFERENCES users(id) ON DELETE CASCADE`,
     `ALTER TABLE storyteller_profiles ADD COLUMN IF NOT EXISTS user_id varchar REFERENCES users(id) ON DELETE CASCADE`,
+    `ALTER TABLE illustrations ADD COLUMN IF NOT EXISTS page_text text`,
   ];
   for (const sql of statements) {
     try {

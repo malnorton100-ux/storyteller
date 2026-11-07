@@ -41,6 +41,8 @@ export const illustrations = pgTable("illustrations", {
   style: text("style").notNull(),
   prompt: text("prompt").notNull(),
   sceneCaption: text("scene_caption"),
+  // The storyteller's own words that go with this picture in the book.
+  pageText: text("page_text"),
   customText: text("custom_text"),
   sceneOrder: integer("scene_order").default(0),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
