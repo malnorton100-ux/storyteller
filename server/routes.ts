@@ -740,7 +740,7 @@ Respond in JSON:
 
 For each scene, provide:
 1. A detailed image generation prompt showing a MOMENT OF ACTION — character mid-gesture, mid-step. Describe active pose, clothing, environment with movable elements, camera angle, and lighting.
-2. A short caption (1-2 sentences narrating this moment)
+2. A short caption narrating this moment, spoken aloud over the scene: ONE or TWO short sentences, 25 words maximum in total, so it can be read in about 8 seconds
 
 Design each scene for obvious motion potential.
 ${story.era ? `\nTIME PERIOD: ${story.era}. Match clothing, hairstyles, vehicles to this period.` : ""}

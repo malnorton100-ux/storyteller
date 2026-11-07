@@ -180,8 +180,9 @@ async function joinWithTransitions(clips: string[], durations: number[], transit
 
 /**
  * Build the finished movie from AI clips (+ optional narration per scene).
- *  1. Each scene lasts at least as long as its narration: the clip is gently
- *     slowed (up to 1.6x) and, if still short, its last frame is held.
+ *  1. Each scene lasts at least as long as its narration: clips play at normal
+ *     speed (no jerky slow-motion); narration may be spoken up to 12% faster, and
+ *     only if still longer is the last frame held.
  *  2. Every clip is converted to the same size/shape/frame rate (one at a time,
  *     low memory) so they can be joined with fades.
  *  3. Narration for each scene is placed exactly under that scene.
@@ -205,10 +206,17 @@ async function stitchClipsWithTransitions(
   for (const p of nar) narDur.push(p ? await probeClipDuration(p) : 0);
 
   const T = n > 1 ? Math.min(0.8, Math.min(...clipDur) * 0.3) : 0; // fade length
-  // Scene length: long enough for its narration plus a breath, never shorter than the clip.
+  // Smooth playback: never slow the clip down (that repeats frames and looks jerky).
+  // If a narration is a little longer than its clip, speak it up to 12% faster;
+  // only if it is still longer, hold the scene's last frame for the remainder.
+  const tempo = clipDur.map((d, i) => {
+    if (!narDur[i]) return 1;
+    const room = d - (i < n - 1 ? T : 0) - 0.4; // time this scene is on screen on its own
+    return Math.min(1.12, Math.max(1, narDur[i] / Math.max(1, room)));
+  });
   const sceneDur = clipDur.map((d, i) => {
     const overlap = i < n - 1 ? T : 0;
-    const needed = narDur[i] ? narDur[i] + 0.6 + overlap : 0;
+    const needed = narDur[i] ? narDur[i] / tempo[i] + 0.4 + overlap : 0;
     return Math.max(d, needed);
   });
 
@@ -222,13 +230,13 @@ async function stitchClipsWithTransitions(
     const normPaths: string[] = [];
     for (let i = 0; i < n; i++) {
       const np = path.join(workDir, `n${i}.mp4`);
-      const stretch = Math.min(1.6, sceneDur[i] / clipDur[i]);
-      const hold = Math.max(0, sceneDur[i] - clipDur[i] * stretch);
+      const hold = Math.max(0, sceneDur[i] - clipDur[i]);
+      if (hold > 0.5) console.warn(`[VideoGen] Scene ${i + 1}: narration is longer than the clip, holding the last frame ${hold.toFixed(1)}s`);
       const vf = [
         `scale=${W}:${H}:force_original_aspect_ratio=decrease`,
         `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`,
         `setsar=1`,
-        stretch > 1.01 ? `setpts=${stretch.toFixed(3)}*PTS` : `setpts=PTS-STARTPTS`,
+        `setpts=PTS-STARTPTS`,
         `fps=24`,
         hold > 0.05 ? `tpad=stop_mode=clone:stop_duration=${hold.toFixed(2)}` : "",
         `format=yuv420p`,
@@ -268,7 +276,8 @@ async function stitchClipsWithTransitions(
       if (p) {
         const k = audioInputs.length;
         audioInputs.push(`-i "${p}"`);
-        parts.push(`[${k}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=mono,apad=whole_dur=${L},atrim=0:${L}[s${i}]`);
+        const speed = tempo[i] > 1.001 ? `atempo=${tempo[i].toFixed(3)},` : "";
+        parts.push(`[${k}:a]aresample=44100,${speed}aformat=sample_fmts=fltp:channel_layouts=mono,apad=whole_dur=${L},atrim=0:${L}[s${i}]`);
       } else {
         parts.push(`anullsrc=r=44100:cl=mono,aformat=sample_fmts=fltp,atrim=0:${L}[s${i}]`);
       }
