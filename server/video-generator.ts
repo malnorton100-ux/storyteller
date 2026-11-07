@@ -113,7 +113,11 @@ async function generateNarrationAudio(
   return audioPaths;
 }
 
-/** Output size based on a clip's shape: longest side at most 1280, even numbers. */
+/**
+ * Output size based on a clip's shape: longest side at most MAX_SIDE, even numbers.
+ * Kept modest on purpose - big frames made ffmpeg run out of memory on a small server.
+ */
+const MAX_SIDE = Number(process.env.VIDEO_MAX_SIDE || 960);
 async function targetSize(clip: string): Promise<{ width: number; height: number }> {
   try {
     const { stdout } = await execAsync(
@@ -125,13 +129,16 @@ async function targetSize(clip: string): Promise<{ width: number; height: number
     const rot = Math.abs(Number(st.side_data_list?.[0]?.rotation || 0));
     if (rot === 90 || rot === 270) [w, h] = [h, w];
     if (!w || !h) throw new Error("no size");
-    const scale = Math.min(1, 1280 / Math.max(w, h));
+    const scale = Math.min(1, MAX_SIDE / Math.max(w, h));
     const even = (n: number) => Math.max(2, Math.round((n * scale) / 2) * 2);
     return { width: even(w), height: even(h) };
   } catch {
-    return { width: 1280, height: 720 };
+    return { width: 960, height: 540 };
   }
 }
+
+// Low-memory encoder settings: few threads, short look-ahead.
+const X264_LOWMEM = `-c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -threads 2 -x264-params rc-lookahead=10`;
 
 /** Run ffmpeg and, if it fails, log the useful last lines of its output. */
 async function runFfmpeg(cmd: string, timeout: number, step: string): Promise<void> {
@@ -139,36 +146,47 @@ async function runFfmpeg(cmd: string, timeout: number, step: string): Promise<vo
     await execAsync(`${cmd} 2>&1`, { timeout, maxBuffer: 20 * 1024 * 1024 });
   } catch (err: any) {
     const out = String(err.stdout || err.stderr || "").trim().split("\n").slice(-8).join(" | ");
-    console.error(`[VideoGen] ffmpeg failed at "${step}"${err.killed ? " (timed out)" : ""}: ${out || err.message}`);
-    throw new Error(`ffmpeg failed at ${step}`);
+    const why = /Killed/.test(out) ? " (server ran out of memory)" : err.killed ? " (timed out)" : "";
+    console.error(`[VideoGen] ffmpeg failed at "${step}"${why}: ${out || err.message}`);
+    throw new Error(`ffmpeg failed at ${step}${why}`);
   }
 }
 
-/** Join same-format clips with a mix of fade transitions. */
+/** Join same-format clips with soft fades. */
 async function joinWithTransitions(clips: string[], durations: number[], transition: number, out: string): Promise<void> {
   if (clips.length === 1) {
     fs.copyFileSync(clips[0], out);
     return;
   }
-  const inputs = clips.map((p) => `-i "${p}"`).join(" ");
+  // One decode thread per input: the server reports many CPUs, and ffmpeg would
+  // otherwise start a thread (and memory) for each one.
+  const inputs = clips.map((p) => `-threads 1 -i "${p}"`).join(" ");
   const names = ["fade", "dissolve", "fadeblack"];
   const chain: string[] = [];
   let last = "0:v";
   let offset = 0;
   for (let i = 1; i < clips.length; i++) {
-    const t = Math.min(transition, durations[i - 1] * 0.4);
-    offset += durations[i - 1] - t;
+    offset += durations[i - 1] - transition;
     const label = i < clips.length - 1 ? `x${i}` : "outv";
-    chain.push(`[${last}][${i}:v]xfade=transition=${names[i % names.length]}:duration=${t.toFixed(2)}:offset=${offset.toFixed(2)}[${label}]`);
+    chain.push(`[${last}][${i}:v]xfade=transition=${names[i % names.length]}:duration=${transition.toFixed(2)}:offset=${offset.toFixed(3)}[${label}]`);
     last = label;
   }
   await runFfmpeg(
-    `ffmpeg -y ${inputs} -filter_complex "${chain.join(";")}" -map "[outv]" -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -movflags +faststart -an "${out}"`,
+    `ffmpeg -y -filter_threads 1 ${inputs} -filter_complex "${chain.join(";")}" -map "[outv]" ${X264_LOWMEM} -movflags +faststart -an "${out}"`,
     300000,
     "add transitions"
   );
 }
 
+/**
+ * Build the finished movie from AI clips (+ optional narration per scene).
+ *  1. Each scene lasts at least as long as its narration: the clip is gently
+ *     slowed (up to 1.6x) and, if still short, its last frame is held.
+ *  2. Every clip is converted to the same size/shape/frame rate (one at a time,
+ *     low memory) so they can be joined with fades.
+ *  3. Narration for each scene is placed exactly under that scene.
+ * If fades fail the clips are joined without them, so the movie is never lost.
+ */
 async function stitchClipsWithTransitions(
   clipPaths: string[],
   outputPath: string,
@@ -176,160 +194,106 @@ async function stitchClipsWithTransitions(
 ): Promise<void> {
   if (clipPaths.length === 0) throw new Error("No clips to stitch");
 
-  const hasNarration = narrationPaths && narrationPaths.some(p => p !== "");
+  const n = clipPaths.length;
+  const nar = (narrationPaths || []).slice(0, n);
+  while (nar.length < n) nar.push("");
+  const hasNarration = nar.some((p) => p);
 
-  if (clipPaths.length === 1 && !hasNarration) {
-    const cmd = `ffmpeg -y -i "${clipPaths[0]}" -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -movflags +faststart -an "${outputPath}" 2>&1`;
-    await execAsync(cmd, { timeout: 180000, maxBuffer: 20 * 1024 * 1024 });
-    return;
-  }
+  const clipDur: number[] = [];
+  for (const c of clipPaths) clipDur.push(await probeClipDuration(c));
+  const narDur: number[] = [];
+  for (const p of nar) narDur.push(p ? await probeClipDuration(p) : 0);
 
-  const durations: number[] = [];
-  for (const clip of clipPaths) {
-    const dur = await probeClipDuration(clip);
-    durations.push(dur);
-  }
+  const T = n > 1 ? Math.min(0.8, Math.min(...clipDur) * 0.3) : 0; // fade length
+  // Scene length: long enough for its narration plus a breath, never shorter than the clip.
+  const sceneDur = clipDur.map((d, i) => {
+    const overlap = i < n - 1 ? T : 0;
+    const needed = narDur[i] ? narDur[i] + 0.6 + overlap : 0;
+    return Math.max(d, needed);
+  });
 
-  if (clipPaths.length === 1 && hasNarration) {
-    const narrationPath = narrationPaths![0] || "";
-    if (narrationPath) {
-      const cmd = `ffmpeg -y -i "${clipPaths[0]}" -i "${narrationPath}" -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -movflags +faststart -c:a aac -b:a 128k -shortest "${outputPath}" 2>&1`;
-      await execAsync(cmd, { timeout: 180000, maxBuffer: 20 * 1024 * 1024 });
-    } else {
-      const cmd = `ffmpeg -y -i "${clipPaths[0]}" -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -movflags +faststart -an "${outputPath}" 2>&1`;
-      await execAsync(cmd, { timeout: 180000, maxBuffer: 20 * 1024 * 1024 });
-    }
-    return;
-  }
-
-  // Every clip is first converted to exactly the same size, shape, frame rate and
-  // format. Different AI video models return slightly different clips, and the
-  // fade-between-scenes step refuses to join clips that don't match exactly.
-  const minClipDuration = Math.min(...durations);
-  const transitionDuration = Math.min(1.0, minClipDuration * 0.4);
-
-  const normDir = path.join(path.dirname(outputPath), `norm-${Date.now()}`);
-  fs.mkdirSync(normDir, { recursive: true });
-  // Keep the shape the AI made (square, wide or tall) instead of forcing 16:9,
-  // which left a small picture with black bars. Size comes from the first clip.
   const { width: W, height: H } = await targetSize(clipPaths[0]);
-  const normPaths: string[] = [];
-  for (let i = 0; i < clipPaths.length; i++) {
-    const np = path.join(normDir, `n${i}.mp4`);
-    await runFfmpeg(
-      `ffmpeg -y -i "${clipPaths[i]}" -vf "scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p" -c:v libx264 -preset veryfast -crf 20 -an "${np}"`,
-      180000,
-      `normalise clip ${i + 1}`
-    );
-    normPaths.push(np);
-    durations[i] = await probeClipDuration(np);
-  }
+  const workDir = path.join(path.dirname(outputPath), `work-${Date.now()}`);
+  fs.mkdirSync(workDir, { recursive: true });
+  const cleanup = () => { try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {} };
 
-  const videoOnlyPath = hasNarration ? outputPath.replace(".mp4", "-videoonly.mp4") : outputPath;
-  console.log(`[VideoGen] Joining ${normPaths.length} clips${hasNarration ? " (narration added after)" : ""}...`);
   try {
-    await joinWithTransitions(normPaths, durations, transitionDuration, videoOnlyPath);
-  } catch (err: any) {
-    // Fall back to a straight join (no fades) so the family still gets their movie.
-    console.warn(`[VideoGen] Fades failed, joining clips without transitions: ${err.message}`);
-    const listPath = path.join(normDir, "list.txt");
-    fs.writeFileSync(listPath, normPaths.map((p) => `file '${p}'`).join("\n"));
-    await runFfmpeg(
-      `ffmpeg -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${videoOnlyPath}"`,
-      120000,
-      "join clips"
-    );
-  } finally {
-    // keep normDir until the end of this function for the narration step
-  }
-  const cleanupNorm = () => { try { fs.rmSync(normDir, { recursive: true, force: true }); } catch {} };
-
-  if (!hasNarration) {
-    cleanupNorm();
-    return;
-  }
-
-  const validNarrations = narrationPaths!.filter(p => p !== "");
-  if (validNarrations.length === 0) {
-    fs.renameSync(videoOnlyPath, outputPath);
-    return;
-  }
-
-  const narrationConcatPath = path.join(path.dirname(outputPath), `narration-concat-${Date.now()}.wav`);
-
-  if (validNarrations.length === 1) {
-    fs.copyFileSync(validNarrations[0], narrationConcatPath);
-  } else {
-    const narrationDurations: number[] = [];
-    for (const np of narrationPaths!) {
-      if (np) {
-        narrationDurations.push(await probeClipDuration(np));
-      } else {
-        narrationDurations.push(0);
-      }
+    // 1+2. Normalise each clip on its own (keeps memory low).
+    const normPaths: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const np = path.join(workDir, `n${i}.mp4`);
+      const stretch = Math.min(1.6, sceneDur[i] / clipDur[i]);
+      const hold = Math.max(0, sceneDur[i] - clipDur[i] * stretch);
+      const vf = [
+        `scale=${W}:${H}:force_original_aspect_ratio=decrease`,
+        `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`,
+        `setsar=1`,
+        stretch > 1.01 ? `setpts=${stretch.toFixed(3)}*PTS` : `setpts=PTS-STARTPTS`,
+        `fps=24`,
+        hold > 0.05 ? `tpad=stop_mode=clone:stop_duration=${hold.toFixed(2)}` : "",
+        `format=yuv420p`,
+      ].filter(Boolean).join(",");
+      await runFfmpeg(
+        `ffmpeg -y -filter_threads 1 -threads 1 -i "${clipPaths[i]}" -vf "${vf}" -t ${sceneDur[i].toFixed(3)} ${X264_LOWMEM} -an "${np}"`,
+        240000,
+        `prepare scene ${i + 1}`
+      );
+      normPaths.push(np);
     }
+    const realDur: number[] = [];
+    for (const np of normPaths) realDur.push(await probeClipDuration(np));
 
-    const concatListPath = path.join(path.dirname(outputPath), `narration-list-${Date.now()}.txt`);
-    const silencePath = path.join(path.dirname(outputPath), `silence-${Date.now()}.wav`);
-
-    let concatContent = "";
-    const gapFiles: string[] = [];
-    let accumulatedVideoTime = 0;
-    let accumulatedAudioTime = 0;
-
-    for (let i = 0; i < narrationPaths!.length; i++) {
-      const videoDur = i < durations.length ? durations[i] : 5;
-      const narPath = narrationPaths![i];
-
-      if (narPath) {
-        const gap = accumulatedVideoTime - accumulatedAudioTime;
-        if (gap > 0.5) {
-          const gapSilencePath = path.join(path.dirname(outputPath), `gap-silence-${i}-${Date.now()}.wav`);
-          await execAsync(`ffmpeg -y -f lavfi -i anullsrc=r=44100:cl=mono -t ${gap.toFixed(2)} "${gapSilencePath}" 2>&1`, { timeout: 10000 });
-          concatContent += `file '${gapSilencePath}'\n`;
-          gapFiles.push(gapSilencePath);
-          accumulatedAudioTime += gap;
-        }
-
-        concatContent += `file '${narPath}'\n`;
-        accumulatedAudioTime += narrationDurations[i];
-      }
-
-      accumulatedVideoTime += videoDur;
-      if (i < durations.length - 1) {
-        accumulatedVideoTime -= Math.min(transitionDuration, videoDur * 0.4);
-      }
-    }
-
-    fs.writeFileSync(concatListPath, concatContent);
+    // 2b. Join.
+    const videoOnly = hasNarration ? path.join(workDir, "video.mp4") : outputPath;
+    console.log(`[VideoGen] Joining ${n} scene(s) at ${W}x${H}${hasNarration ? " with narration" : ""}...`);
+    let usedFades = true;
     try {
-      await execAsync(`ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c:a pcm_s16le "${narrationConcatPath}" 2>&1`, { timeout: 30000 });
+      await joinWithTransitions(normPaths, realDur, T, videoOnly);
     } catch (err: any) {
-      console.error("[VideoGen] Narration concat failed:", err.message);
-      fs.renameSync(videoOnlyPath, outputPath);
-      try { fs.unlinkSync(concatListPath); } catch {}
-      cleanupNorm();
-      return;
+      usedFades = false;
+      console.warn(`[VideoGen] Fades failed, joining without them: ${err.message}`);
+      const listPath = path.join(workDir, "list.txt");
+      fs.writeFileSync(listPath, normPaths.map((p) => `file '${p}'`).join("\n"));
+      await runFfmpeg(`ffmpeg -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${videoOnly}"`, 120000, "join scenes");
     }
-    try { fs.unlinkSync(concatListPath); } catch {}
-    try { fs.unlinkSync(silencePath); } catch {}
-    for (const g of gapFiles) { try { fs.unlinkSync(g); } catch {} }
-  }
+    if (!hasNarration) return;
 
-  try {
-    // Pad the narration with silence so the movie keeps its full length (the
-    // pictures decide how long it runs, not the narration).
-    const mergeCmd = `ffmpeg -y -i "${videoOnlyPath}" -i "${narrationConcatPath}" -filter_complex "[1:a]apad[a]" -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 128k -shortest -movflags +faststart "${outputPath}" 2>&1`;
-    await execAsync(mergeCmd, { timeout: 60000 });
-    console.log("[VideoGen] Narration audio merged into video successfully");
-  } catch (err: any) {
-    console.error("[VideoGen] Audio merge failed, using video without narration:", err.message);
-    fs.renameSync(videoOnlyPath, outputPath);
+    // 3. Narration track: each scene's voice starts when that scene starts.
+    const overlap = usedFades ? T : 0;
+    const segLen = realDur.map((d, i) => (i < n - 1 ? d - overlap : d));
+    const audioInputs: string[] = [];
+    const parts: string[] = [];
+    nar.forEach((p, i) => {
+      const L = Math.max(0.1, segLen[i]).toFixed(3);
+      if (p) {
+        const k = audioInputs.length;
+        audioInputs.push(`-i "${p}"`);
+        parts.push(`[${k}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=mono,apad=whole_dur=${L},atrim=0:${L}[s${i}]`);
+      } else {
+        parts.push(`anullsrc=r=44100:cl=mono,aformat=sample_fmts=fltp,atrim=0:${L}[s${i}]`);
+      }
+    });
+    parts.push(`${nar.map((_, i) => `[s${i}]`).join("")}concat=n=${n}:v=0:a=1[aout]`);
+    const audioPath = path.join(workDir, "narration.m4a");
+    try {
+      await runFfmpeg(
+        `ffmpeg -y ${audioInputs.join(" ")} -filter_complex "${parts.join(";")}" -map "[aout]" -c:a aac -b:a 128k "${audioPath}"`,
+        120000,
+        "build narration"
+      );
+      await runFfmpeg(
+        `ffmpeg -y -i "${videoOnly}" -i "${audioPath}" -map 0:v -map 1:a -c:v copy -c:a copy -shortest -movflags +faststart "${outputPath}"`,
+        120000,
+        "add narration"
+      );
+      console.log("[VideoGen] Narration added under each scene");
+    } catch (err: any) {
+      console.error(`[VideoGen] Narration failed, keeping the silent movie: ${err.message}`);
+      fs.copyFileSync(videoOnly, outputPath);
+    }
+  } finally {
+    cleanup();
   }
-
-  try { fs.unlinkSync(videoOnlyPath); } catch {}
-  try { fs.unlinkSync(narrationConcatPath); } catch {}
-  cleanupNorm();
 }
 
 export async function generateVideoFromScenes(
