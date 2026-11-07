@@ -7,6 +7,7 @@ import { generateImageBuffer, generateImageWithReference } from "./replit_integr
 import { generateVideoFromScenes } from "./video-generator";
 import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma-client";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
+import { userId, userOwnsStory } from "./auth";
 import express from "express";
 import crypto from "crypto";
 import fs from "fs";
@@ -69,9 +70,9 @@ export async function registerRoutes(
 ): Promise<Server> {
   app.use(express.json({ limit: "50mb" }));
 
-  app.get("/api/stories", async (_req, res) => {
+  app.get("/api/stories", async (req, res) => {
     try {
-      const stories = await storage.getStories();
+      const stories = await storage.getStories(userId(req));
       res.json(stories);
     } catch (error) {
       console.error("Error fetching stories:", error);
@@ -95,7 +96,7 @@ export async function registerRoutes(
   app.post("/api/stories", async (req, res) => {
     try {
       const parsed = insertStorySchema.parse(req.body);
-      const story = await storage.createStory(parsed);
+      const story = await storage.createStory({ ...parsed, userId: userId(req), shareToken: null });
       res.status(201).json(story);
 
       if (story.content && story.content.length > 30) {
@@ -145,9 +146,9 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/stories/generate-covers", async (_req, res) => {
+  app.post("/api/stories/generate-covers", async (req, res) => {
     try {
-      const stories = await storage.getStories();
+      const stories = await storage.getStories(userId(req));
       const needsCover = stories.filter(s => !s.coverImageUrl && s.content.length > 30);
       res.json({ message: `Generating covers for ${needsCover.length} stories in the background`, count: needsCover.length });
 
@@ -198,8 +199,9 @@ export async function registerRoutes(
       let profile: any = null;
       if (profileId) {
         profile = await storage.getStorytellerProfile(profileId);
+        if (profile && profile.userId !== userId(req)) profile = null;
       } else {
-        const profiles = await storage.getStorytellerProfiles();
+        const profiles = await storage.getStorytellerProfiles(userId(req));
         if (profiles.length > 0) profile = profiles[0];
       }
 
@@ -488,15 +490,16 @@ Respond in valid JSON format ONLY:
     }
   });
 
-  app.get("/api/illustration-jobs/:jobId", (req, res) => {
+  app.get("/api/illustration-jobs/:jobId", async (req, res) => {
     const job = illustrationJobs.get(req.params.jobId);
     if (!job) return res.json({ status: "complete", totalScenes: 0, completedScenes: 0 });
+    if (!(await userOwnsStory(req, job.storyId))) return res.status(404).json({ error: "Job not found" });
     res.json(job);
   });
 
-  app.post("/api/illustration-jobs/:jobId/cancel", (req, res) => {
+  app.post("/api/illustration-jobs/:jobId/cancel", async (req, res) => {
     const job = illustrationJobs.get(req.params.jobId);
-    if (!job) return res.status(404).json({ error: "Job not found" });
+    if (!job || !(await userOwnsStory(req, job.storyId))) return res.status(404).json({ error: "Job not found" });
     job.cancelled = true;
     job.status = "cancelled";
     illustrationJobs.set(req.params.jobId, job);
@@ -579,7 +582,13 @@ Respond in valid JSON format ONLY:
     });
   });
 
-  app.post("/api/set-replicate-token", (req, res) => {
+  app.post("/api/set-replicate-token", async (req, res) => {
+    // Changing the server's video API key is for the app owner only.
+    const me = await storage.getUser(userId(req));
+    const adminEmail = (process.env.ADMIN_EMAIL || "").toLowerCase();
+    if (!adminEmail || me?.username !== adminEmail) {
+      return res.status(403).json({ error: "Only the app owner can change this setting" });
+    }
     const { token } = req.body;
     if (!token || !token.startsWith("r8_")) {
       return res.status(400).json({ error: "Invalid token format" });
@@ -629,8 +638,9 @@ Respond in valid JSON format ONLY:
       let videoProfile: any = null;
       if (profileId) {
         videoProfile = await storage.getStorytellerProfile(profileId);
+        if (videoProfile && videoProfile.userId !== userId(req)) videoProfile = null;
       } else {
-        const profiles = await storage.getStorytellerProfiles();
+        const profiles = await storage.getStorytellerProfiles(userId(req));
         if (profiles.length > 0) videoProfile = profiles[0];
       }
       const vidPermanentFeatures = videoProfile?.appearanceDescription ? extractPermanentFeatures(videoProfile.appearanceDescription) : "";
@@ -964,9 +974,9 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
     }
   });
 
-  app.get("/api/storyteller-profiles", async (_req, res) => {
+  app.get("/api/storyteller-profiles", async (req, res) => {
     try {
-      const profiles = await storage.getStorytellerProfiles();
+      const profiles = await storage.getStorytellerProfiles(userId(req));
       res.json(profiles);
     } catch (error) {
       console.error("Error fetching profiles:", error);
@@ -1089,6 +1099,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       const { voicePreference } = req.body;
       const profile = await storage.createStorytellerProfile({
+        userId: userId(req),
         name,
         photoUrl: photoUrl || null,
         additionalPhotos: null,
@@ -1403,9 +1414,13 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
   app.post("/api/stripe/checkout", async (req, res) => {
     try {
-      const { priceId, storyId, productType, sessionId } = req.body;
-      if (!priceId || !storyId || !productType || !sessionId) {
+      const { priceId, storyId, productType } = req.body;
+      const sessionId = userId(req);
+      if (!priceId || !storyId || !productType) {
         return res.status(400).json({ error: "Missing required fields" });
+      }
+      if (!(await userOwnsStory(req, Number(storyId)))) {
+        return res.status(404).json({ error: "Story not found" });
       }
 
       const stripe = await getUncachableStripeClient();
@@ -1441,7 +1456,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
   app.post("/api/stripe/verify-payment", async (req, res) => {
     try {
-      const { sessionId: stripeSessionId, browserSessionId } = req.body;
+      const { sessionId: stripeSessionId } = req.body;
       if (!stripeSessionId) {
         return res.status(400).json({ error: "Missing session ID" });
       }
@@ -1451,8 +1466,8 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
         return res.status(404).json({ error: "Purchase not found" });
       }
 
-      if (browserSessionId && purchase.sessionId !== browserSessionId) {
-        return res.status(403).json({ error: "Session mismatch" });
+      if (purchase.sessionId !== userId(req)) {
+        return res.status(404).json({ error: "Purchase not found" });
       }
 
       if (purchase.status === "paid") {
@@ -1481,10 +1496,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
   app.get("/api/stories/:id/purchases", async (req, res) => {
     try {
       const storyId = parseInt(req.params.id);
-      const sessionId = req.query.sessionId as string;
-      if (!sessionId) return res.json([]);
-
-      const purchasesList = await storage.getPurchasesForStory(sessionId, storyId);
+      const purchasesList = await storage.getPurchasesForStory(userId(req), storyId);
       res.json(purchasesList);
     } catch (error) {
       console.error("Error fetching purchases:", error);
@@ -1573,10 +1585,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
   app.get("/api/stories/:id/download/pdf", async (req, res) => {
     try {
       const storyId = parseInt(req.params.id);
-      const sessionId = req.query.sessionId as string;
-      if (!sessionId) return res.status(401).json({ error: "Not authorized" });
-
-      const purchasesList = await storage.getPurchasesForStory(sessionId, storyId);
+      const purchasesList = await storage.getPurchasesForStory(userId(req), storyId);
       const hasPdf = purchasesList.some(p => p.productType === "pdf_download" || p.productType === "bundle_download");
       if (!hasPdf) return res.status(403).json({ error: "Purchase required" });
 
@@ -1585,7 +1594,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       const illustrationsList = await storage.getIllustrations(storyId);
 
-      const profiles = await storage.getStorytellerProfiles();
+      const profiles = await storage.getStorytellerProfiles(userId(req));
       const storytellerName = profiles.length > 0 ? profiles[0].name : "";
 
       const imageToBase64 = (relUrl: string): string => {

@@ -1,6 +1,10 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 async function throwIfResNotOk(res: Response) {
+  // Session expired or logged out elsewhere: send the user back to the login screen.
+  if (res.status === 401 && !res.url.includes("/api/auth/")) {
+    queryClient.setQueryData(["/api/auth/me"], null);
+  }
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);

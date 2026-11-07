@@ -320,23 +320,15 @@ export default function StoryDetail() {
   });
   const aiVideoEnabled = videoConfig?.aiVideoEnabled ?? false;
 
-  const [browserSessionId] = useState(() => {
-    let id = localStorage.getItem("storykeeper_session");
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem("storykeeper_session", id);
-    }
-    return id;
-  });
-
   const { data: stripeProducts } = useQuery<any[]>({
     queryKey: ["/api/stripe/products"],
   });
 
   const { data: storyPurchases, refetch: refetchPurchases } = useQuery<Purchase[]>({
-    queryKey: ["/api/stories", storyId, "purchases", browserSessionId],
+    queryKey: ["/api/stories", storyId, "purchases"],
     queryFn: async () => {
-      const res = await fetch(`/api/stories/${storyId}/purchases?sessionId=${browserSessionId}`);
+      const res = await fetch(`/api/stories/${storyId}/purchases`, { credentials: "include" });
+      if (!res.ok) return [];
       return res.json();
     },
     enabled: storyId > 0,
@@ -350,7 +342,7 @@ export default function StoryDetail() {
     if (params.get("payment") === "success" && params.get("session_id")) {
       const verifyPayment = async () => {
         try {
-          await apiRequest("POST", "/api/stripe/verify-payment", { sessionId: params.get("session_id"), browserSessionId });
+          await apiRequest("POST", "/api/stripe/verify-payment", { sessionId: params.get("session_id") });
           refetchPurchases();
           toast({ title: "Payment successful!", description: "Your download is now available." });
           window.history.replaceState({}, "", `/stories/${storyId}`);
@@ -371,7 +363,6 @@ export default function StoryDetail() {
         priceId,
         storyId,
         productType,
-        sessionId: browserSessionId,
       });
       return res.json();
     },
@@ -1338,7 +1329,7 @@ export default function StoryDetail() {
                               size="sm"
                               onClick={() => {
                                 if (productType === "pdf_download" || productType === "bundle_download") {
-                                  window.open(`/api/stories/${storyId}/download/pdf?sessionId=${browserSessionId}`, "_blank");
+                                  window.open(`/api/stories/${storyId}/download/pdf`, "_blank");
                                 }
                                 if (productType === "video_download" || productType === "bundle_download") {
                                   const vid = completedVideos[0];
