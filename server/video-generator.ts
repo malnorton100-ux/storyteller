@@ -360,11 +360,20 @@ export async function generatePreviewMovie(
       const dur = Math.max(5, narr + 1.2);
       const frames = Math.round(dur * 24);
       // Alternate the movement so it doesn't feel repetitive.
+      // Clearly visible movement (a 12% zoom looked like a still on a phone).
+      // Eased in/out so it glides rather than drifts.
+      const e = `(0.5-0.5*cos(PI*on/${frames}))`;
       const moves = [
-        `zoompan=z='1+0.12*on/${frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
-        `zoompan=z='1.12':x='(iw-iw/zoom)*on/${frames}':y='ih/2-(ih/zoom/2)'`,
-        `zoompan=z='1.12-0.12*on/${frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
-        `zoompan=z='1.12':x='(iw-iw/zoom)*(1-on/${frames})':y='(ih-ih/zoom)*0.3'`,
+        // slow push-in on the centre
+        `zoompan=z='1+0.35*${e}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
+        // pan left to right across the picture
+        `zoompan=z='1.3':x='(iw-iw/zoom)*${e}':y='ih/2-(ih/zoom/2)'`,
+        // pull back from a close-up, revealing the scene
+        `zoompan=z='1.35-0.35*${e}':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*0.35'`,
+        // pan right to left, drifting down
+        `zoompan=z='1.3':x='(iw-iw/zoom)*(1-${e})':y='(ih-ih/zoom)*(0.2+0.5*${e})'`,
+        // push in towards the upper third (faces)
+        `zoompan=z='1+0.35*${e}':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*0.3'`,
       ];
       const clip = path.join(tempDir, `p${i}.mp4`);
       // Upscale first so the slow zoom stays smooth (no jitter).
