@@ -59,7 +59,10 @@ async function generateAIVideoClip(
 
   const prompt = `REAL VIDEO CLIP with continuous motion every second. ${scene.caption}. ${motionDesc}. Subject movement: person walks, turns, gestures naturally. Camera movement: slow cinematic dolly/pan/push-in throughout. Environmental motion: wind in trees/hair/clothes, flowing water, drifting particles, flickering light, parallax depth. No frozen frames. No still images. Cinematic warm nostalgic tone. Stable coherent scene with natural lifelike motion throughout entire clip.`;
 
-  const remoteVideoUrl = await animateImageToVideo(publicUrl, prompt, "16:9");
+  // Send the picture itself (the Replicate client uploads it) rather than a link,
+  // so it works even if Replicate can't reach this server's address.
+  const imageData = fs.readFileSync(scene.imagePath);
+  const remoteVideoUrl = await animateImageToVideo(imageData, prompt, "16:9");
 
   const clipFilename = `clip-scene-${sceneIndex}-${Date.now()}.mp4`;
   const clipPath = path.join(outputDir, clipFilename);
