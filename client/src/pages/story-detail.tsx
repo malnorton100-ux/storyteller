@@ -640,6 +640,7 @@ export default function StoryDetail() {
           title={story.title}
           style={playingVideo.style}
           onClose={() => setPlayingVideo(null)}
+          canSave={hasVideoPurchase}
         />
       )}
 

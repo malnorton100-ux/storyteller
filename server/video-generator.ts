@@ -113,6 +113,26 @@ async function generateNarrationAudio(
   return audioPaths;
 }
 
+/** Output size based on a clip's shape: longest side at most 1280, even numbers. */
+async function targetSize(clip: string): Promise<{ width: number; height: number }> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -select_streams v:0 -show_entries stream=width,height:stream_side_data=rotation -of json "${clip}"`,
+      { timeout: 10000 }
+    );
+    const st = JSON.parse(stdout).streams?.[0] || {};
+    let w = Number(st.width), h = Number(st.height);
+    const rot = Math.abs(Number(st.side_data_list?.[0]?.rotation || 0));
+    if (rot === 90 || rot === 270) [w, h] = [h, w];
+    if (!w || !h) throw new Error("no size");
+    const scale = Math.min(1, 1280 / Math.max(w, h));
+    const even = (n: number) => Math.max(2, Math.round((n * scale) / 2) * 2);
+    return { width: even(w), height: even(h) };
+  } catch {
+    return { width: 1280, height: 720 };
+  }
+}
+
 /** Run ffmpeg and, if it fails, log the useful last lines of its output. */
 async function runFfmpeg(cmd: string, timeout: number, step: string): Promise<void> {
   try {
@@ -190,11 +210,14 @@ async function stitchClipsWithTransitions(
 
   const normDir = path.join(path.dirname(outputPath), `norm-${Date.now()}`);
   fs.mkdirSync(normDir, { recursive: true });
+  // Keep the shape the AI made (square, wide or tall) instead of forcing 16:9,
+  // which left a small picture with black bars. Size comes from the first clip.
+  const { width: W, height: H } = await targetSize(clipPaths[0]);
   const normPaths: string[] = [];
   for (let i = 0; i < clipPaths.length; i++) {
     const np = path.join(normDir, `n${i}.mp4`);
     await runFfmpeg(
-      `ffmpeg -y -i "${clipPaths[i]}" -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p" -c:v libx264 -preset veryfast -crf 20 -an "${np}"`,
+      `ffmpeg -y -i "${clipPaths[i]}" -vf "scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p" -c:v libx264 -preset veryfast -crf 20 -an "${np}"`,
       180000,
       `normalise clip ${i + 1}`
     );

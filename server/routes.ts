@@ -7,7 +7,7 @@ import { generateImageBuffer, generateImageWithReference } from "./replit_integr
 import { generateVideoFromScenes } from "./video-generator";
 import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma-client";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
-import { userId, userOwnsStory } from "./auth";
+import { userId, userOwnsStory, isOwner } from "./auth";
 import { PUBLIC_DATA_DIR, TEXT_MODEL, parseAiJson } from "./config";
 import express from "express";
 import crypto from "crypto";
@@ -1493,6 +1493,10 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
   app.get("/api/stories/:id/purchases", async (req, res) => {
     try {
       const storyId = parseInt(req.params.id);
+      // The app owner can download everything for free (for testing and their own family).
+      if (await isOwner(req)) {
+        return res.json([{ id: 0, sessionId: userId(req), storyId, productType: "bundle_download", status: "paid", stripeSessionId: null, stripePaymentIntentId: null, createdAt: new Date() }]);
+      }
       const purchasesList = await storage.getPurchasesForStory(userId(req), storyId);
       res.json(purchasesList);
     } catch (error) {
@@ -1583,7 +1587,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
     try {
       const storyId = parseInt(req.params.id);
       const purchasesList = await storage.getPurchasesForStory(userId(req), storyId);
-      const hasPdf = purchasesList.some(p => p.productType === "pdf_download" || p.productType === "bundle_download");
+      const hasPdf = (await isOwner(req)) || purchasesList.some(p => p.productType === "pdf_download" || p.productType === "bundle_download");
       if (!hasPdf) return res.status(403).json({ error: "Purchase required" });
 
       const story = await storage.getStory(storyId);
