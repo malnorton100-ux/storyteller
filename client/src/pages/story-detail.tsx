@@ -839,7 +839,7 @@ export default function StoryDetail() {
                         }`}
                         data-testid={`button-style-${style.value}`}
                       >
-                        <img src={style.img} alt={style.label} className="w-full aspect-[4/3] object-cover rounded-md mb-2" />
+                        <img src={style.img} alt="" className="w-full aspect-[4/3] object-cover rounded-md mb-2" onError={(e) => { e.currentTarget.style.display = "none"; }} />
                         <p className="text-sm font-medium">{style.label}</p>
                         <p className="text-xs text-muted-foreground">{style.desc}</p>
                       </button>
@@ -945,7 +945,7 @@ export default function StoryDetail() {
                         }`}
                         data-testid={`button-video-style-${style.value}`}
                       >
-                        <img src={style.img} alt={style.label} className="w-full aspect-[4/3] object-cover rounded-md mb-2" />
+                        <img src={style.img} alt="" className="w-full aspect-[4/3] object-cover rounded-md mb-2" onError={(e) => { e.currentTarget.style.display = "none"; }} />
                         <p className="text-sm font-medium">{style.label}</p>
                         <p className="text-xs text-muted-foreground">{style.desc}</p>
                       </button>
