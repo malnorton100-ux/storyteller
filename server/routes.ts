@@ -1777,6 +1777,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${story.title} — Storyteller</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2026,7 +2027,11 @@ html, body {
   line-height: 1.8;
 }
 
+.save-bar { position: sticky; top: 0; z-index: 10; display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: #fdf8f1; border-bottom: 1px solid #e8dccb; font-family: Lora, Georgia, serif; }
+.save-bar button { font: inherit; font-size: 18px; background: #c2570c; color: #fff; border: 0; border-radius: 10px; padding: 12px 22px; cursor: pointer; }
+.save-bar span { font-size: 14px; color: #7a6a5c; }
 @media print {
+  .save-bar { display: none !important; }
   body { background: white; }
   .page { margin: 0; box-shadow: none; }
 }
@@ -2038,7 +2043,8 @@ html, body {
 }
 </style>
 </head>
-<body>`;
+<body>
+<div class="save-bar"><button onclick="window.print()">Save as PDF / Print</button><span>On iPhone: tap the button, then Share → Save to Files</span></div>`;
 
       let pageNum = 0;
 
@@ -2129,7 +2135,8 @@ html, body {
       html += `</body></html>`;
 
       res.setHeader("Content-Type", "text/html");
-      res.setHeader("Content-Disposition", `attachment; filename="${story.title.replace(/[^a-zA-Z0-9]/g, "_")}_storybook.html"`);
+      // Open in the browser (not a file download) so it can be read and saved as a PDF.
+      res.setHeader("Content-Disposition", `inline; filename="${story.title.replace(/[^a-zA-Z0-9]/g, "_")}_storybook.html"`);
       res.send(html);
     } catch (error) {
       console.error("Error generating PDF:", error);
