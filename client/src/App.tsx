@@ -1,4 +1,7 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
+import { Loader2 } from "lucide-react";
+import { AuthProvider, useAuth } from "@/hooks/use-auth";
+import AuthPage from "@/pages/auth-page";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -40,11 +43,32 @@ const sidebarStyle = {
   "--sidebar-width-icon": "3rem",
 };
 
-function App() {
+function Shell() {
+  const { user, isLoading } = useAuth();
+  const [location] = useLocation();
+
+  // Shared/gifted storybooks are public - family can open them without an account.
+  if (location.startsWith("/shared/")) {
+    return (
+      <main className="h-screen overflow-y-auto">
+        <Switch>
+          <Route path="/shared/:token" component={SharedStory} />
+        </Switch>
+      </main>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) return <div className="h-screen overflow-y-auto"><AuthPage /></div>;
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <TooltipProvider>
           <SidebarProvider style={sidebarStyle as React.CSSProperties}>
             <div className="flex h-screen w-full">
               <AppSidebar />
@@ -59,6 +83,17 @@ function App() {
               </div>
             </div>
           </SidebarProvider>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <TooltipProvider>
+          <AuthProvider>
+            <Shell />
+          </AuthProvider>
           <Toaster />
         </TooltipProvider>
       </ThemeProvider>

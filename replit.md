@@ -11,6 +11,16 @@ A digital legacy app where grandparents and aunties can record their life storie
 - **AI Video**: Replicate API with Wan2.1 model (real AI-generated video clips from scene images, requires REPLICATE_API_TOKEN secret)
 - **Payments**: Stripe integration for one-time download purchases (PDF $4.99, Video $6.99, Bundle $9.99)
 
+## Accounts & Privacy
+
+- Email + password accounts (`server/auth.ts`); passwords hashed with scrypt, sessions stored in Postgres (`session` table), 30-day login.
+- Every story and storyteller profile belongs to a user (`user_id`). Illustrations, videos, perspectives and purchases are reached through the story, and every `/api/...:id` route checks ownership first (returns 404 for other people's data).
+- Purchases are tied to the account (the `purchases.session_id` column now holds the user id), so they survive a new phone or cleared browser.
+- Public without login: `/shared/:token` storybooks, `/api/auth/*`, Stripe webhook/products/key, `/api/health`.
+- The **first account created** inherits any stories/profiles made before accounts existed.
+- Required secrets: `SESSION_SECRET` (long random string; required in production). Optional: `ADMIN_EMAIL` (only this account may change the Replicate token).
+- After pulling this change run `npm run db:push` (the server also adds the new columns itself on start-up).
+
 ## Key Features
 
 - **Voice Recording**: Record stories by speaking into the microphone, auto-transcribed via AI
@@ -118,7 +128,7 @@ shared/
 
 ## Future Roadmap
 
-- **User Authentication**: Proper login/signup to replace browser session tracking
+- **Password reset by email** (needs an email service such as Resend or Postmark)
 - **Audio Stories**: Let users record audio narration that gets attached to illustrations
 - **Multi-language Support**: Translate stories for bilingual families
 - **Family Groups**: Create family groups so multiple users can contribute to a shared story collection

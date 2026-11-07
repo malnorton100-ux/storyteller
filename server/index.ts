@@ -6,6 +6,7 @@ import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 import { validateAndFixToken } from "./luma-client";
+import { setupAuth } from "./auth";
 
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception:", err);
@@ -148,8 +149,8 @@ app.use((req, res, next) => {
     res.json({ status: "ok", uptime: process.uptime() });
   });
 
-  const { seedDatabase } = await import("./seed");
-  await seedDatabase().catch((err) => console.error("Seed error:", err));
+  // Sample stories are no longer seeded: every story now belongs to an account.
+  await setupAuth(app);
 
   validateAndFixToken().catch((err) => console.log("[Replicate] Token validation skipped:", err.message));
 

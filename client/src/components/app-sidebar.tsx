@@ -1,4 +1,6 @@
-import { BookOpen, Home, Mic, Plus, Library, CircleUserRound, Lightbulb, Clock } from "lucide-react";
+import { BookOpen, Home, Mic, Plus, Library, CircleUserRound, Lightbulb, Clock, LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -27,6 +29,7 @@ const navItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { setOpenMobile, isMobile } = useSidebar();
+  const { user, logout } = useAuth();
 
   const handleNavClick = () => {
     if (isMobile) {
@@ -67,10 +70,23 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4">
-        <p className="text-xs text-muted-foreground text-center">
-          Every story matters
-        </p>
+      <SidebarFooter className="p-4 space-y-2">
+        {user && (
+          <div className="min-w-0" data-testid="text-signed-in-as">
+            <p className="text-sm font-medium truncate">{user.name || user.email}</p>
+            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+          </div>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full justify-start"
+          onClick={() => { handleNavClick(); logout(); }}
+          data-testid="button-logout"
+        >
+          <LogOut className="h-4 w-4 mr-2" />
+          Log out
+        </Button>
       </SidebarFooter>
     </Sidebar>
   );

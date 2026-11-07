@@ -1,16 +1,27 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, timestamp, json } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, timestamp, json, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // username holds the user's email address (lower-cased)
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  name: text("name"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
+
+// Login sessions (format required by connect-pg-simple)
+export const sessions = pgTable("session", {
+  sid: varchar("sid").primaryKey(),
+  sess: json("sess").notNull(),
+  expire: timestamp("expire", { precision: 6 }).notNull(),
+}, (t) => [index("IDX_session_expire").on(t.expire)]);
 
 export const stories = pgTable("stories", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   content: text("content").notNull(),
   era: text("era"),
@@ -47,6 +58,7 @@ export const storyVideos = pgTable("story_videos", {
 
 export const storytellerProfiles = pgTable("storyteller_profiles", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   photoUrl: text("photo_url"),
   additionalPhotos: text("additional_photos").array(),
@@ -58,6 +70,7 @@ export const storytellerProfiles = pgTable("storyteller_profiles", {
 
 export const purchases = pgTable("purchases", {
   id: serial("id").primaryKey(),
+  // Holds the buyer's user id (was a browser id before accounts existed)
   sessionId: text("session_id").notNull(),
   storyId: integer("story_id").notNull().references(() => stories.id, { onDelete: "cascade" }),
   productType: text("product_type").notNull(),

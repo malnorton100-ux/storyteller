@@ -1,9 +1,9 @@
 import { db } from "./db";
-import { stories, illustrations, storyVideos, storytellerProfiles, purchases, storyPerspectives, type Story, type InsertStory, type Illustration, type InsertIllustration, type StoryVideo, type InsertStoryVideo, type StorytellerProfile, type InsertStorytellerProfile, type Purchase, type InsertPurchase, type StoryPerspective, type InsertStoryPerspective } from "@shared/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { users, type User, stories, illustrations, storyVideos, storytellerProfiles, purchases, storyPerspectives, type Story, type InsertStory, type Illustration, type InsertIllustration, type StoryVideo, type InsertStoryVideo, type StorytellerProfile, type InsertStorytellerProfile, type Purchase, type InsertPurchase, type StoryPerspective, type InsertStoryPerspective } from "@shared/schema";
+import { eq, desc, and, sql, isNull } from "drizzle-orm";
 
 export interface IStorage {
-  getStories(): Promise<Story[]>;
+  getStories(userId: string): Promise<Story[]>;
   getStory(id: number): Promise<Story | undefined>;
   createStory(story: InsertStory): Promise<Story>;
   updateStory(id: number, story: Partial<InsertStory>): Promise<Story | undefined>;
@@ -17,7 +17,7 @@ export interface IStorage {
   createStoryVideo(video: InsertStoryVideo): Promise<StoryVideo>;
   updateStoryVideo(id: number, data: Partial<InsertStoryVideo>): Promise<StoryVideo | undefined>;
   deleteStoryVideo(id: number): Promise<void>;
-  getStorytellerProfiles(): Promise<StorytellerProfile[]>;
+  getStorytellerProfiles(userId: string): Promise<StorytellerProfile[]>;
   getStorytellerProfile(id: number): Promise<StorytellerProfile | undefined>;
   createStorytellerProfile(profile: InsertStorytellerProfile): Promise<StorytellerProfile>;
   updateStorytellerProfile(id: number, data: Partial<InsertStorytellerProfile>): Promise<StorytellerProfile | undefined>;
@@ -29,8 +29,36 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  async getStories(): Promise<Story[]> {
-    return db.select().from(stories).orderBy(desc(stories.createdAt));
+  // ---- users ----
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, email.toLowerCase()));
+    return user;
+  }
+
+  async createUser(data: typeof users.$inferInsert): Promise<User> {
+    const [user] = await db.insert(users).values(data).returning();
+    return user;
+  }
+
+  async countUsers(): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(users);
+    return Number(row.count);
+  }
+
+  /** Give stories/profiles created before accounts existed to this user. */
+  async claimUnownedData(userId: string): Promise<void> {
+    await db.update(stories).set({ userId }).where(isNull(stories.userId));
+    await db.update(storytellerProfiles).set({ userId }).where(isNull(storytellerProfiles.userId));
+  }
+
+  // ---- stories ----
+  async getStories(userId: string): Promise<Story[]> {
+    return db.select().from(stories).where(eq(stories.userId, userId)).orderBy(desc(stories.createdAt));
   }
 
   async getStory(id: number): Promise<Story | undefined> {
@@ -54,6 +82,11 @@ export class DatabaseStorage implements IStorage {
 
   async getIllustrations(storyId: number): Promise<Illustration[]> {
     return db.select().from(illustrations).where(eq(illustrations.storyId, storyId)).orderBy(illustrations.sceneOrder, illustrations.createdAt);
+  }
+
+  async getIllustration(id: number): Promise<Illustration | undefined> {
+    const [ill] = await db.select().from(illustrations).where(eq(illustrations.id, id));
+    return ill;
   }
 
   async createIllustration(illustration: InsertIllustration): Promise<Illustration> {
@@ -93,8 +126,8 @@ export class DatabaseStorage implements IStorage {
     await db.delete(storyVideos).where(eq(storyVideos.id, id));
   }
 
-  async getStorytellerProfiles(): Promise<StorytellerProfile[]> {
-    return db.select().from(storytellerProfiles).orderBy(desc(storytellerProfiles.createdAt));
+  async getStorytellerProfiles(userId: string): Promise<StorytellerProfile[]> {
+    return db.select().from(storytellerProfiles).where(eq(storytellerProfiles.userId, userId)).orderBy(desc(storytellerProfiles.createdAt));
   }
 
   async getStorytellerProfile(id: number): Promise<StorytellerProfile | undefined> {
@@ -125,6 +158,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(storyPerspectives).where(eq(storyPerspectives.storyId, storyId)).orderBy(storyPerspectives.createdAt);
   }
 
+  async getStoryPerspective(id: number): Promise<StoryPerspective | undefined> {
+    const [p] = await db.select().from(storyPerspectives).where(eq(storyPerspectives.id, id));
+    return p;
+  }
+
   async createStoryPerspective(perspective: InsertStoryPerspective): Promise<StoryPerspective> {
     const [created] = await db.insert(storyPerspectives).values(perspective).returning();
     return created;
@@ -151,6 +189,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  /** sessionId here is the buyer's user id. */
   async getPurchasesForStory(sessionId: string, storyId: number): Promise<Purchase[]> {
     return db.select().from(purchases).where(
       and(
