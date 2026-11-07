@@ -11,6 +11,8 @@ const execAsync = promisify(exec);
 interface SceneInput {
   imagePath: string;
   caption: string;
+  /** What actually happens in this scene (from the story), used to direct the motion. */
+  action?: string;
 }
 
 interface NarrationConfig {
@@ -38,11 +40,13 @@ async function probeClipDuration(clipPath: string): Promise<number> {
   }
 }
 
-const MOTION_DESCRIPTORS = [
-  "The subject walks forward slowly while turning their head, gesturing with their hands. Camera slowly pushes in (dolly forward). Background has gentle wind moving leaves and grass, light flickers through trees, distant figures walk past.",
-  "The subject turns to look at something, shifting their weight and reaching out. Camera pans smoothly left to right following their gaze. Background shows parallax motion — close objects move faster than distant ones, wind blows through hair and clothes.",
-  "The subject leans forward with emotion, making expressive hand gestures. Camera tilts upward slowly while pulling back. Background has flowing water, swaying branches, clouds drifting, and ambient motion everywhere.",
-  "The subject walks away then pauses and turns back with a gentle smile. Camera dollies sideways in a tracking shot. Background has flickering warm light, floating dust particles, and subtle environmental motion throughout.",
+// Gentle camera moves, varied per scene. Deliberately no set "walk away / turn back"
+// actions: those fought the picture and made people walk backwards.
+const CAMERA_MOVES = [
+  "Slow, gentle push-in towards the main person.",
+  "Smooth, slow pan following the action.",
+  "Steady camera with a very slight drift.",
+  "Slow pull-back revealing more of the place.",
 ];
 
 async function generateAIVideoClip(
@@ -55,9 +59,11 @@ async function generateAIVideoClip(
   console.log(`[VideoGen] Scene ${sceneIndex + 1} — generating REAL AI VIDEO CLIP`);
   console.log(`[VideoGen] Scene ${sceneIndex + 1} public URL: ${publicUrl}`);
 
-  const motionDesc = MOTION_DESCRIPTORS[sceneIndex % MOTION_DESCRIPTORS.length];
+  const camera = CAMERA_MOVES[sceneIndex % CAMERA_MOVES.length];
+  const action = (scene.action || scene.caption).replace(/\[STORYTELLER\]/g, "").slice(0, 600);
 
-  const prompt = `REAL VIDEO CLIP with continuous motion every second. ${scene.caption}. ${motionDesc}. Subject movement: person walks, turns, gestures naturally. Camera movement: slow cinematic dolly/pan/push-in throughout. Environmental motion: wind in trees/hair/clothes, flowing water, drifting particles, flickering light, parallax depth. No frozen frames. No still images. Cinematic warm nostalgic tone. Stable coherent scene with natural lifelike motion throughout entire clip.`;
+  // Describe what happens in THIS scene, and keep movement natural.
+  const prompt = `${scene.caption}. ${action} People move naturally and in the direction they are facing - walking forwards, never backwards. Realistic body movement, natural pace, faces stay consistent. Small natural motion in the surroundings (water, wind, light). ${camera} Warm, nostalgic, cinematic. No text.`;
 
   // Send the picture itself (the Replicate client uploads it) rather than a link,
   // so it works even if Replicate can't reach this server's address.
@@ -105,6 +111,26 @@ async function generateNarrationAudio(
   }
 
   return audioPaths;
+}
+
+/** Output size based on a clip's shape: longest side at most 1280, even numbers. */
+async function targetSize(clip: string): Promise<{ width: number; height: number }> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -select_streams v:0 -show_entries stream=width,height:stream_side_data=rotation -of json "${clip}"`,
+      { timeout: 10000 }
+    );
+    const st = JSON.parse(stdout).streams?.[0] || {};
+    let w = Number(st.width), h = Number(st.height);
+    const rot = Math.abs(Number(st.side_data_list?.[0]?.rotation || 0));
+    if (rot === 90 || rot === 270) [w, h] = [h, w];
+    if (!w || !h) throw new Error("no size");
+    const scale = Math.min(1, 1280 / Math.max(w, h));
+    const even = (n: number) => Math.max(2, Math.round((n * scale) / 2) * 2);
+    return { width: even(w), height: even(h) };
+  } catch {
+    return { width: 1280, height: 720 };
+  }
 }
 
 /** Run ffmpeg and, if it fails, log the useful last lines of its output. */
@@ -184,11 +210,14 @@ async function stitchClipsWithTransitions(
 
   const normDir = path.join(path.dirname(outputPath), `norm-${Date.now()}`);
   fs.mkdirSync(normDir, { recursive: true });
+  // Keep the shape the AI made (square, wide or tall) instead of forcing 16:9,
+  // which left a small picture with black bars. Size comes from the first clip.
+  const { width: W, height: H } = await targetSize(clipPaths[0]);
   const normPaths: string[] = [];
   for (let i = 0; i < clipPaths.length; i++) {
     const np = path.join(normDir, `n${i}.mp4`);
     await runFfmpeg(
-      `ffmpeg -y -i "${clipPaths[i]}" -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p" -c:v libx264 -preset veryfast -crf 20 -an "${np}"`,
+      `ffmpeg -y -i "${clipPaths[i]}" -vf "scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p" -c:v libx264 -preset veryfast -crf 20 -an "${np}"`,
       180000,
       `normalise clip ${i + 1}`
     );

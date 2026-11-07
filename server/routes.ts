@@ -7,7 +7,7 @@ import { generateImageBuffer, generateImageWithReference } from "./replit_integr
 import { generateVideoFromScenes } from "./video-generator";
 import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma-client";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
-import { userId, userOwnsStory } from "./auth";
+import { userId, userOwnsStory, isOwner } from "./auth";
 import { PUBLIC_DATA_DIR, TEXT_MODEL, parseAiJson } from "./config";
 import express from "express";
 import crypto from "crypto";
@@ -827,7 +827,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
               const fp0 = path.join(illDir, fn0);
               fs.writeFileSync(fp0, buf0);
               videoConsistencyRefPath = fp0;
-              sceneImages[0] = { imagePath: fp0, caption: scene0.caption };
+              sceneImages[0] = { imagePath: fp0, caption: scene0.caption, action: scene0.prompt };
               scenes[0] = { imageUrl: `/images/illustrations/${fn0}`, caption: scene0.caption };
               console.log(`Video scene 1 done (${videoAgeTransformedRefPath ? "age-transformed" : "original"} anchor saved)`);
             } catch (err: any) {
@@ -863,7 +863,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
             const imagePath = path.join(illDir, filename);
             fs.writeFileSync(imagePath, imageBuffer);
 
-            sceneImages[i] = { imagePath, caption: scene.caption };
+            sceneImages[i] = { imagePath, caption: scene.caption, action: scene.prompt };
             scenes[i] = {
               imageUrl: `/images/illustrations/${filename}`,
               caption: scene.caption,
@@ -879,7 +879,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
             return true;
           }, 3);
 
-          const validSceneImages = sceneImages.filter((s): s is { imagePath: string; caption: string } => s !== undefined);
+          const validSceneImages = sceneImages.filter((s): s is { imagePath: string; caption: string; action?: string } => s !== undefined);
           const validScenes = scenes.filter((s): s is { imageUrl: string; caption: string } => s !== undefined);
 
           if (cancelledVideoIds.has(video.id)) {
@@ -1493,6 +1493,10 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
   app.get("/api/stories/:id/purchases", async (req, res) => {
     try {
       const storyId = parseInt(req.params.id);
+      // The app owner can download everything for free (for testing and their own family).
+      if (await isOwner(req)) {
+        return res.json([{ id: 0, sessionId: userId(req), storyId, productType: "bundle_download", status: "paid", stripeSessionId: null, stripePaymentIntentId: null, createdAt: new Date() }]);
+      }
       const purchasesList = await storage.getPurchasesForStory(userId(req), storyId);
       res.json(purchasesList);
     } catch (error) {
@@ -1583,7 +1587,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
     try {
       const storyId = parseInt(req.params.id);
       const purchasesList = await storage.getPurchasesForStory(userId(req), storyId);
-      const hasPdf = purchasesList.some(p => p.productType === "pdf_download" || p.productType === "bundle_download");
+      const hasPdf = (await isOwner(req)) || purchasesList.some(p => p.productType === "pdf_download" || p.productType === "bundle_download");
       if (!hasPdf) return res.status(403).json({ error: "Purchase required" });
 
       const story = await storage.getStory(storyId);

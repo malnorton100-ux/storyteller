@@ -1,15 +1,44 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { X, Play, Pause, Maximize, Volume2, VolumeX } from "lucide-react";
+import { X, Play, Pause, Maximize, Volume2, VolumeX, Share, Loader2 } from "lucide-react";
 
 interface StoryPlayerProps {
   videoUrl: string;
   title: string;
   style: string;
   onClose: () => void;
+  /** Show the Save / Share button (owner, or paid for the video). */
+  canSave?: boolean;
 }
 
-export function StoryPlayer({ videoUrl, title, style, onClose }: StoryPlayerProps) {
+export function StoryPlayer({ videoUrl, title, style, onClose, canSave }: StoryPlayerProps) {
+  const [saving, setSaving] = useState(false);
+
+  // On iPhone this opens the share sheet with "Save Video", Messages, Facebook etc.
+  const saveOrShare = async () => {
+    setSaving(true);
+    const fileName = `${title.replace(/[^\w\s-]/g, "").trim() || "story"}.mp4`;
+    try {
+      const res = await fetch(videoUrl);
+      const blob = await res.blob();
+      const file = new File([blob], fileName, { type: "video/mp4" });
+      const nav: any = navigator;
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file], title });
+      } else {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+    } catch (err: any) {
+      if (err?.name !== "AbortError") window.open(videoUrl, "_blank");
+    } finally {
+      setSaving(false);
+    }
+  };
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
@@ -139,6 +168,18 @@ export function StoryPlayer({ videoUrl, title, style, onClose }: StoryPlayerProp
           >
             {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
           </Button>
+          {canSave && (
+            <Button
+              variant="ghost"
+              onClick={saveOrShare}
+              disabled={saving}
+              className="text-white hover:bg-white/20 text-base h-11 px-4"
+              data-testid="button-save-share-video"
+            >
+              {saving ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <Share className="h-5 w-5 mr-2" />}
+              {saving ? "Getting it ready…" : "Save / Share"}
+            </Button>
+          )}
         </div>
       </div>
     </div>

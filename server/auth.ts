@@ -30,6 +30,14 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
+/** True if the logged-in user is the app owner (ADMIN_EMAIL). */
+export async function isOwner(req: Request): Promise<boolean> {
+  const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+  if (!adminEmail || !req.session.userId) return false;
+  const user = await storage.getUser(req.session.userId);
+  return user?.username === adminEmail;
+}
+
 /** The logged-in user's id. Only call after requireAuth has run. */
 export function userId(req: Request): string {
   return req.session.userId as string;
@@ -86,6 +94,7 @@ const publicUser = (u: { id: string; username: string; name: string | null }) =>
   id: u.id,
   email: u.username,
   name: u.name,
+  isOwner: !!process.env.ADMIN_EMAIL && u.username === process.env.ADMIN_EMAIL.trim().toLowerCase(),
 });
 
 /** Paths under /api that work without logging in. */
