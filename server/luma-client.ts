@@ -51,7 +51,7 @@ function getClient(): Replicate {
 }
 
 /** Fill {{image}} / {{prompt}} / {{aspect_ratio}} placeholders anywhere in a JSON value. */
-function fillTemplate(value: any, vars: Record<string, string>): any {
+function fillTemplate(value: any, vars: Record<string, any>): any {
   if (typeof value === "string") {
     const exact = value.match(/^\{\{(\w+)\}\}$/);
     if (exact && exact[1] in vars) return vars[exact[1]];
@@ -69,8 +69,8 @@ function fillTemplate(value: any, vars: Record<string, string>): any {
  * differently, so: use REPLICATE_VIDEO_INPUT if set, else known presets, else a
  * best-guess common shape.
  */
-export function buildVideoInput(imageUrl: string, prompt: string, aspectRatio: string): Record<string, any> {
-  const vars = { image: imageUrl, prompt, aspect_ratio: aspectRatio };
+export function buildVideoInput(imageUrl: string | Buffer, prompt: string, aspectRatio: string): Record<string, any> {
+  const vars: Record<string, any> = { image: imageUrl, prompt, aspect_ratio: aspectRatio };
 
   if (VIDEO_INPUT_TEMPLATE) {
     try {
@@ -101,14 +101,14 @@ export function buildVideoInput(imageUrl: string, prompt: string, aspectRatio: s
 }
 
 export async function animateImageToVideo(
-  imageUrl: string,
+  imageUrl: string | Buffer,
   prompt: string,
   aspectRatio: "16:9" | "9:16" | "1:1" = "16:9"
 ): Promise<string> {
   const client = getClient();
   console.log(`[Replicate] Generating REAL AI VIDEO CLIP (not slideshow)...`);
   console.log(`[Replicate] Prompt: ${prompt.substring(0, 200)}...`);
-  console.log(`[Replicate] Image URL: ${imageUrl}`);
+  console.log(`[Replicate] Image: ${typeof imageUrl === "string" ? imageUrl : `uploaded file (${imageUrl.length} bytes)`}`);
 
   const input = buildVideoInput(imageUrl, prompt, aspectRatio);
   console.log(`[Replicate] Model: ${VIDEO_MODEL}`);

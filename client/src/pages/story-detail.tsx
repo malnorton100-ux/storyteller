@@ -1493,7 +1493,7 @@ export default function StoryDetail() {
                     <Film className="h-5 w-5 text-destructive" />
                     <div>
                       <p className="text-sm font-medium">Video generation failed</p>
-                      <p className="text-xs text-muted-foreground">The AI couldn't create this animated story. This can happen with intense content. Try adjusting the rating or story.</p>
+                      <p className="text-xs text-muted-foreground">Something went wrong making the movie. Delete this and try again in a few minutes. If it keeps happening, let us know.</p>
                     </div>
                   </div>
                   <Button
