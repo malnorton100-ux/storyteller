@@ -311,7 +311,9 @@ Respond in JSON:
             role: "system",
             content: `You are turning a personal story into a ${sceneCount}-page illustrated picture book, like a classic children's picture book.
 
-STEP 1 - THE WORDS. Split the story's OWN WORDS into exactly ${sceneCount} pages, in order. Each page's "text" is a contiguous passage copied word-for-word from the story (do not rewrite, add or drop anything). Together the pages contain the whole story. Split at natural moments so each page is ONE clear moment, roughly even in length.
+STEP 1 - THE WORDS. Split the story's OWN WORDS into exactly ${sceneCount} pages, in order. Each page's "text" is a contiguous passage copied word-for-word from the story (do not rewrite, add or drop anything). Together the pages contain the whole story. Split at natural moments so each page is ONE clear moment, roughly even in length - no page's text more than about twice as long as another's.
+The story's biggest moment (the climax, the funny disaster, the turning point) MUST get its own page and its own picture - never squeeze it onto a page with other events.
+A present-day closing page holds ONLY the present-day words (e.g. "It's in my shed now. One day, it'll be in yours."), not earlier events.
 
 STEP 2 - THE PICTURE for each page shows EXACTLY what that page's text describes - the reader looks from the words to the picture and it makes sense. If the text mentions mums with tea towels, show the mums; if it mentions a horse, show the horse; if it mentions a wheel coming off, show the wheel flying away.
 
@@ -320,6 +322,7 @@ MAKE THE BOOK VISUALLY VARIED - every page must look clearly different from the 
 - a recurring object (e.g. a cart, a car) only appears where the text involves it, and is the main subject on at most a third of the pages
 - different shot each page: wide establishing shot, crowd scene, mid shot, close-up of hands or a face, low angle, high angle looking down a street, over-the-shoulder
 - different setting or time of day where the story allows
+- NO two pages in a row may share the same setting AND the same framing - if two pages happen in the same place, change the shot completely (e.g. wide shot of the whole shed, then a tight close-up of small hands hammering a nail)
 - the storyteller appears on most pages, caught mid-action and absorbed in the moment (never posing or looking at the camera), with a named emotion. Other people the text mentions SHOULD appear.
 - If the story ends by looking back from the present day (e.g. "it's in my shed now"), make the LAST page a present-day scene of the storyteller as they look TODAY, and set "present": true for it.
 
@@ -2093,8 +2096,12 @@ html, body {
      blank second sheet. Pages size to their content and break cleanly. */
   .page { width: 100% !important; min-height: 0 !important; height: auto !important; padding: 12mm 16mm !important; break-after: page; page-break-after: always; break-inside: avoid; }
   .page:last-child { break-after: auto; page-break-after: auto; }
-  .cover-page { min-height: 255mm !important; }
-  .page-number { position: static !important; margin-top: 8mm; }
+  /* Leave room for the margins phones add when printing, so nothing spills onto a blank sheet. */
+  .cover-page { min-height: 225mm !important; max-height: 245mm; overflow: hidden; }
+  .illustration-page .illustration-image-wrapper img { max-height: 132mm !important; }
+  .page-text { font-size: 13.5pt !important; margin-top: 6mm !important; }
+  .page { max-height: 250mm; overflow: hidden; }
+  .page-number { position: static !important; margin-top: 5mm; }
   html, body { background: #FFFBF5 !important; }
   .page { margin: 0; box-shadow: none; }
 }
