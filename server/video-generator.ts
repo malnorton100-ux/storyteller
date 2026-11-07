@@ -151,7 +151,7 @@ async function joinWithTransitions(clips: string[], durations: number[], transit
     return;
   }
   const inputs = clips.map((p) => `-i "${p}"`).join(" ");
-  const names = ["fade", "dissolve", "smoothleft", "circlecrop", "fadeblack"];
+  const names = ["fade", "dissolve", "fadeblack"];
   const chain: string[] = [];
   let last = "0:v";
   let offset = 0;

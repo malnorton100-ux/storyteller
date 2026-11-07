@@ -45,6 +45,14 @@ export function StoryPlayer({ videoUrl, title, style, onClose, canSave }: StoryP
   const [progress, setProgress] = useState(0);
   const [showControls, setShowControls] = useState(true);
 
+  // Full screen: iPhone Safari uses its own video player for this.
+  const goFullScreen = () => {
+    const v: any = videoRef.current;
+    if (!v) return;
+    if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+    else if (v.requestFullscreen) v.requestFullscreen().catch(() => {});
+  };
+
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (videoRef.current.paused) {
@@ -95,18 +103,18 @@ export function StoryPlayer({ videoUrl, title, style, onClose, canSave }: StoryP
           size="icon"
           variant="ghost"
           onClick={onClose}
-          className="text-white hover:bg-white/20"
+          className="text-white hover:bg-white/20 h-11 w-11"
           data-testid="button-close-player"
         >
           <X className="h-5 w-5" />
         </Button>
       </div>
 
-      <div className="flex-1 flex items-center justify-center cursor-pointer" onClick={togglePlay}>
+      <div className="flex-1 min-h-0 relative flex items-center justify-center cursor-pointer" onClick={togglePlay}>
         <video
           ref={videoRef}
           src={videoUrl}
-          className="max-w-full max-h-full"
+          className="absolute inset-0 w-full h-full object-contain"
           playsInline
           onTimeUpdate={handleTimeUpdate}
           onEnded={() => setIsPlaying(false)}
@@ -151,10 +159,10 @@ export function StoryPlayer({ videoUrl, title, style, onClose, canSave }: StoryP
             size="icon"
             variant="ghost"
             onClick={togglePlay}
-            className="text-white hover:bg-white/20"
+            className="text-white hover:bg-white/20 h-11 w-11"
             data-testid="button-play-pause"
           >
-            {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+            {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
           </Button>
           <Button
             size="icon"
@@ -163,10 +171,20 @@ export function StoryPlayer({ videoUrl, title, style, onClose, canSave }: StoryP
               setIsMuted(!isMuted);
               if (videoRef.current) videoRef.current.muted = !isMuted;
             }}
-            className="text-white hover:bg-white/20"
+            className="text-white hover:bg-white/20 h-11 w-11"
             data-testid="button-mute-toggle"
           >
             {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={goFullScreen}
+            className="text-white hover:bg-white/20 h-11 w-11"
+            aria-label="Full screen"
+            data-testid="button-fullscreen"
+          >
+            <Maximize className="h-6 w-6" />
           </Button>
           {canSave && (
             <Button
