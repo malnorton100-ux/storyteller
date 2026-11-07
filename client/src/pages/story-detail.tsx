@@ -10,6 +10,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { StoryPlayer } from "@/components/story-player";
 import { WorkingBanner } from "@/components/working-banner";
+import { shareImages } from "@/lib/share-images";
 import type { Story, Illustration, StoryVideo, StorytellerProfile, Purchase, StoryPerspective } from "@shared/schema";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -250,6 +251,18 @@ export default function StoryDetail() {
   const [illustrationProgress, setIllustrationProgress] = useState({ completed: 0, total: 4 });
   const [enableNarration, setEnableNarration] = useState(true);
   const [sceneCount, setSceneCount] = useState(4);
+  const [savingPictures, setSavingPictures] = useState<"all" | "one" | null>(null);
+  const savePictures = async (urls: string[], which: "all" | "one") => {
+    setSavingPictures(which);
+    try {
+      const result = await shareImages(urls, story?.title || "story");
+      if (result === "downloaded") toast({ title: urls.length > 1 ? "Pictures downloaded" : "Picture downloaded" });
+    } catch {
+      toast({ title: "Couldn't save the pictures", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingPictures(null);
+    }
+  };
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [giftMessageDraft, setGiftMessageDraft] = useState("");
   const [shareLink, setShareLink] = useState<string | null>(null);
@@ -710,7 +723,16 @@ export default function StoryDetail() {
               </>
             )}
             <div className="flex flex-col items-center gap-3 max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-              <img src={img.imageUrl} alt={img.sceneCaption || `Scene ${viewingImageIndex + 1}`} className="max-w-[90vw] max-h-[80vh] object-contain rounded-md select-none" draggable={false} />
+              <img src={img.imageUrl} alt={img.sceneCaption || `Scene ${viewingImageIndex + 1}`} className="max-w-[90vw] max-h-[72vh] object-contain rounded-md select-none" draggable={false} />
+              <button
+                onClick={(e) => { e.stopPropagation(); savePictures([img.imageUrl], "one"); }}
+                disabled={savingPictures !== null}
+                className="flex items-center gap-2 bg-white text-black rounded-full px-5 py-2.5 text-base font-medium disabled:opacity-60"
+                data-testid="button-viewer-save"
+              >
+                {savingPictures === "one" ? <Loader2 className="h-5 w-5 animate-spin" /> : <Share2 className="h-5 w-5" />}
+                Save / Share this picture
+              </button>
               <div className="text-center text-white/80 text-sm">
                 Page {viewingImageIndex + 1} of {allSorted.length}
                 {allSorted.length > 1 && (
@@ -748,6 +770,22 @@ export default function StoryDetail() {
               >
                 <Download className="mr-2 h-4 w-4" />
                 Download book
+              </Button>
+            )}
+            {(story as any)?.illustrations?.length > 0 && (
+              <Button
+                variant="secondary"
+                disabled={savingPictures !== null}
+                onClick={() =>
+                  savePictures(
+                    [...(story as any).illustrations].sort((a: any, b: any) => (a.sceneOrder || 0) - (b.sceneOrder || 0)).map((i: any) => i.imageUrl),
+                    "all"
+                  )
+                }
+                data-testid="button-save-pictures"
+              >
+                {savingPictures === "all" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
+                Save pictures
               </Button>
             )}
             <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
