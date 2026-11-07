@@ -39,3 +39,13 @@ Sign up with the owner's email first.
   Because it runs with `--force`, avoid renaming or removing database columns without a plan.
 - The Stripe webhook is registered automatically at `<your address>/api/stripe/webhook`.
 - Files saved by the app go to `/data/public` (served to browsers) and `/data/private` (not served).
+
+## AI model settings (optional)
+Defaults are in `server/config.ts`. Override in Railway → Variables when OpenAI retires a model:
+
+| Variable | Default | Note |
+|---|---|---|
+| `OPENAI_IMAGE_MODEL` | `gpt-image-2.5-flare` | gpt-image-1 was shut down 23 Oct 2026. Alternative: `gpt-image-2.5-sunburst` |
+| `OPENAI_TEXT_MODEL` | `gpt-5.2` | |
+| `OPENAI_AUDIO_MODEL` | `gpt-audio` | retires 20 Jan 2027 → `gpt-audio-1.5` |
+| `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-mini-transcribe` | retires 26 Feb 2027 → `gpt-transcribe` |

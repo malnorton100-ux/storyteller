@@ -8,7 +8,7 @@ import { generateVideoFromScenes } from "./video-generator";
 import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma-client";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { userId, userOwnsStory } from "./auth";
-import { PUBLIC_DATA_DIR } from "./config";
+import { PUBLIC_DATA_DIR, TEXT_MODEL, parseAiJson } from "./config";
 import express from "express";
 import crypto from "crypto";
 import fs from "fs";
@@ -249,7 +249,7 @@ export async function registerRoutes(
       const storyText = story.content.substring(0, 2000);
 
       const characterAnalysis = await openai.chat.completions.create({
-        model: "gpt-5.2",
+        model: TEXT_MODEL,
         messages: [
           {
             role: "system",
@@ -280,14 +280,13 @@ Respond in JSON:
           },
           { role: "user", content: storyText }
         ],
-        max_completion_tokens: 500,
+        max_completion_tokens: 4000,
       });
 
       let charInfo: any = null;
       try {
         const rawChar = characterAnalysis.choices[0]?.message?.content || "{}";
-        const cleanedChar = rawChar.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-        charInfo = JSON.parse(cleanedChar);
+        charInfo = parseAiJson(rawChar);
         console.log("[Illustrations] Character analysis:", JSON.stringify(charInfo, null, 2));
       } catch (e) {
         console.warn("[Illustrations] Character analysis parse failed, using defaults");
@@ -300,7 +299,7 @@ Respond in JSON:
       const otherCharsSimple = Array.isArray(charInfo?.otherCharacters) ? charInfo.otherCharacters.join(", ") : "";
 
       const sceneSplitResponse = await openai.chat.completions.create({
-        model: "gpt-5.2",
+        model: TEXT_MODEL,
         messages: [
           {
             role: "system",
@@ -335,19 +334,18 @@ Respond in valid JSON format ONLY:
           },
           { role: "user", content: storyText }
         ],
-        max_completion_tokens: sceneCount <= 4 ? 1000 : 3000,
+        max_completion_tokens: sceneCount <= 4 ? 8000 : 12000,
       });
 
       let scenes: { caption: string; description: string }[] = [];
       try {
         const rawContent = sceneSplitResponse.choices[0]?.message?.content || "[]";
-        const cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-        const parsed = JSON.parse(cleaned);
+        const parsed = parseAiJson(rawContent);
         if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("Invalid scenes");
         scenes = parsed;
         console.log(`[Illustrations] Requested ${sceneCount} scenes, AI generated ${scenes.length} scenes`);
       } catch (parseErr) {
-        console.error(`[Illustrations] Failed to parse scene JSON, using fallback for ${sceneCount} scenes`);
+        console.error(`[Illustrations] Failed to parse scene JSON, using fallback for ${sceneCount} scenes:`, (parseErr as Error).message, "| finish_reason:", sceneSplitResponse.choices[0]?.finish_reason);
       }
       if (scenes.length === 0) {
         const contentLen = story.content.length;
@@ -554,7 +552,7 @@ Respond in valid JSON format ONLY:
       if (!content) return res.status(400).json({ error: "Content required" });
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5.2",
+        model: TEXT_MODEL,
         messages: [
           {
             role: "system",
@@ -565,7 +563,7 @@ Respond in valid JSON format ONLY:
             content: `Please polish this story while keeping its authentic voice:\n\n${content}`
           }
         ],
-        max_completion_tokens: 2048,
+        max_completion_tokens: 6000,
       });
 
       const enhanced = response.choices[0]?.message?.content || content;
@@ -684,7 +682,7 @@ Respond in valid JSON format ONLY:
           const videoStoryText = story.content.substring(0, 1500);
 
           const videoCharAnalysis = await openai.chat.completions.create({
-            model: "gpt-5.2",
+            model: TEXT_MODEL,
             messages: [
               {
                 role: "system",
@@ -714,14 +712,13 @@ Respond in JSON:
               },
               { role: "user", content: videoStoryText }
             ],
-            max_completion_tokens: 500,
+            max_completion_tokens: 4000,
           });
 
           let vidCharInfo: any = null;
           try {
             const rawVidChar = videoCharAnalysis.choices[0]?.message?.content || "{}";
-            const cleanedVidChar = rawVidChar.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-            vidCharInfo = JSON.parse(cleanedVidChar);
+            vidCharInfo = parseAiJson(rawVidChar);
             console.log("[Video] Character analysis:", JSON.stringify(vidCharInfo, null, 2));
           } catch {
             console.warn("[Video] Character analysis parse failed, using defaults");
@@ -734,7 +731,7 @@ Respond in JSON:
           const vidOtherCharsSimple = Array.isArray(vidCharInfo?.otherCharacters) ? vidCharInfo.otherCharacters.join(", ") : "";
 
           const sceneResponse = await openai.chat.completions.create({
-            model: "gpt-5.2",
+            model: TEXT_MODEL,
             messages: [
               {
                 role: "system",
@@ -770,14 +767,13 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
                 content: `Break this story into 4 ACTION-RICH scenes ${styleInstruction}:\n\n${videoStoryText}`
               }
             ],
-            max_completion_tokens: 2000,
+            max_completion_tokens: 10000,
           });
 
           const rawScenes = sceneResponse.choices[0]?.message?.content || "[]";
           let scenesParsed: { prompt: string; caption: string }[];
           try {
-            const cleaned = rawScenes.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            const parsed = JSON.parse(cleaned);
+            const parsed = parseAiJson(rawScenes);
             if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("Not an array");
             scenesParsed = parsed;
           } catch {
@@ -1017,7 +1013,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
       ];
 
       const visionResponse = await openai.chat.completions.create({
-        model: "gpt-5.2",
+        model: TEXT_MODEL,
         messages: [
           {
             role: "system",
@@ -1050,7 +1046,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
           },
           { role: "user", content: userContent }
         ],
-        max_completion_tokens: 700,
+        max_completion_tokens: 4000,
       });
       return visionResponse.choices[0]?.message?.content || undefined;
     } catch (visionErr: any) {
@@ -1356,7 +1352,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
       if (!content) return res.status(400).json({ error: "Content required" });
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5.2",
+        model: TEXT_MODEL,
         messages: [
           {
             role: "system",
@@ -1364,7 +1360,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
           },
           { role: "user", content: content.substring(0, 500) }
         ],
-        max_completion_tokens: 50,
+        max_completion_tokens: 2000,
       });
 
       const title = response.choices[0]?.message?.content?.trim().replace(/^["']|["']$/g, '') || "My Story";
