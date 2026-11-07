@@ -35,3 +35,31 @@ export const openaiConfig = {
   apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "missing-openai-key",
   baseURL: process.env.OPENAI_API_KEY ? undefined : process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
 };
+
+/**
+ * AI model names. Set OPENAI_IMAGE_MODEL / OPENAI_TEXT_MODEL in Railway to switch
+ * models without a code change (e.g. when OpenAI retires one).
+ * gpt-image-1 was shut down by OpenAI on 23 Oct 2026; its replacement is gpt-image-2.5-flare/-sunburst.
+ */
+export const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-flare";
+export const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-5.2";
+// gpt-audio retires 20 Jan 2027 (replacement gpt-audio-1.5); gpt-4o-mini-transcribe retires 26 Feb 2027 (replacement gpt-transcribe).
+export const AUDIO_MODEL = process.env.OPENAI_AUDIO_MODEL || "gpt-audio";
+export const TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
+
+/**
+ * Pull the JSON array/object out of an AI reply, even if it is wrapped in
+ * ```json fences or has a sentence before/after it.
+ */
+export function parseAiJson(raw: string | null | undefined): any {
+  const text = (raw || "").replace(/```(?:json)?/gi, "").trim();
+  try {
+    return JSON.parse(text);
+  } catch {}
+  const starts = [text.indexOf("["), text.indexOf("{")].filter((i) => i >= 0);
+  if (starts.length === 0) throw new Error("No JSON found in AI reply");
+  const start = Math.min(...starts);
+  const end = Math.max(text.lastIndexOf("]"), text.lastIndexOf("}"));
+  if (end <= start) throw new Error("Incomplete JSON in AI reply");
+  return JSON.parse(text.slice(start, end + 1));
+}

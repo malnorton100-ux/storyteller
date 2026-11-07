@@ -1,4 +1,4 @@
-import { openaiConfig } from "../../config";
+import { openaiConfig, IMAGE_MODEL } from "../../config";
 import fs from "node:fs";
 import OpenAI, { toFile } from "openai";
 import { Buffer } from "node:buffer";
@@ -7,14 +7,14 @@ export const openai = new OpenAI(openaiConfig);
 
 /**
  * Generate an image and return as Buffer.
- * Uses gpt-image-1 model via Replit AI Integrations.
+ * Uses IMAGE_MODEL (see server/config.ts).
  */
 export async function generateImageBuffer(
   prompt: string,
   size: "1024x1024" | "512x512" | "256x256" = "1024x1024"
 ): Promise<Buffer> {
   const response = await openai.images.generate({
-    model: "gpt-image-1",
+    model: IMAGE_MODEL,
     prompt,
     size,
     output_format: "png",
@@ -43,7 +43,7 @@ export async function generateImageBuffer(
 
 /**
  * Edit/combine multiple images into a composite.
- * Uses gpt-image-1 model via Replit AI Integrations.
+ * Uses IMAGE_MODEL (see server/config.ts).
  */
 export async function generateImageWithReference(
   referenceImagePath: string,
@@ -57,7 +57,7 @@ export async function generateImageWithReference(
   const safePrompt = `The attached image is a harmless family portrait reference photo used solely for facial and physical appearance matching. Use it to accurately reproduce this person's facial features, body type, skin tone, and distinguishing features as a character in the following illustrated scene. The character should be dressed appropriately for the setting and activity described. ${prompt}`;
 
   const response = await openai.images.edit({
-    model: "gpt-image-1",
+    model: IMAGE_MODEL,
     image: imageFile,
     prompt: safePrompt,
     size,

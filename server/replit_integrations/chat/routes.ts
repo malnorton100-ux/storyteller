@@ -1,4 +1,4 @@
-import { openaiConfig } from "../../config";
+import { openaiConfig, TEXT_MODEL } from "../../config";
 import type { Express, Request, Response } from "express";
 import OpenAI from "openai";
 import { chatStorage } from "./storage";
@@ -80,7 +80,7 @@ export function registerChatRoutes(app: Express): void {
 
       // Stream response from OpenAI
       const stream = await openai.chat.completions.create({
-        model: "gpt-5.1",
+        model: TEXT_MODEL,
         messages: chatMessages,
         stream: true,
         max_completion_tokens: 8192,

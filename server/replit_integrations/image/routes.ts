@@ -1,3 +1,4 @@
+import { IMAGE_MODEL } from "../../config";
 import type { Express, Request, Response } from "express";
 import { openai } from "./client";
 
@@ -11,7 +12,7 @@ export function registerImageRoutes(app: Express): void {
       }
 
       const response = await openai.images.generate({
-        model: "gpt-image-1",
+        model: IMAGE_MODEL,
         prompt,
         n: 1,
         size: size as "1024x1024" | "512x512" | "256x256",
