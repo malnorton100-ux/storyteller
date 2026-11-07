@@ -63,3 +63,14 @@ export function parseAiJson(raw: string | null | undefined): any {
   if (end <= start) throw new Error("Incomplete JSON in AI reply");
   return JSON.parse(text.slice(start, end + 1));
 }
+
+/**
+ * Replicate video (image-to-video) model. Change in Railway without a code change:
+ *   REPLICATE_VIDEO_MODEL  e.g. "kwaivgi/kling-v2.1"
+ *   REPLICATE_VIDEO_INPUT  (optional) JSON of that model's inputs, using the placeholders
+ *                          {{image}} {{prompt}} {{aspect_ratio}}, e.g.
+ *                          {"start_image":"{{image}}","prompt":"{{prompt}}","duration":5}
+ * Each model names its inputs differently - copy them from the model's "API" tab on replicate.com.
+ */
+export const VIDEO_MODEL = process.env.REPLICATE_VIDEO_MODEL || "wavespeedai/wan-2.1-i2v-480p";
+export const VIDEO_INPUT_TEMPLATE = process.env.REPLICATE_VIDEO_INPUT || "";

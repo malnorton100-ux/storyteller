@@ -1,4 +1,4 @@
-import { PRIVATE_DATA_DIR } from "./config";
+import { PRIVATE_DATA_DIR, VIDEO_MODEL, VIDEO_INPUT_TEMPLATE } from "./config";
 import Replicate from "replicate";
 import fs from "fs";
 import path from "path";
@@ -50,6 +50,56 @@ function getClient(): Replicate {
   });
 }
 
+/** Fill {{image}} / {{prompt}} / {{aspect_ratio}} placeholders anywhere in a JSON value. */
+function fillTemplate(value: any, vars: Record<string, string>): any {
+  if (typeof value === "string") {
+    const exact = value.match(/^\{\{(\w+)\}\}$/);
+    if (exact && exact[1] in vars) return vars[exact[1]];
+    return value.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vars ? vars[k] : m));
+  }
+  if (Array.isArray(value)) return value.map((v) => fillTemplate(v, vars));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, fillTemplate(v, vars)]));
+  }
+  return value;
+}
+
+/**
+ * Inputs for the configured video model. Every Replicate model names its inputs
+ * differently, so: use REPLICATE_VIDEO_INPUT if set, else known presets, else a
+ * best-guess common shape.
+ */
+export function buildVideoInput(imageUrl: string, prompt: string, aspectRatio: string): Record<string, any> {
+  const vars = { image: imageUrl, prompt, aspect_ratio: aspectRatio };
+
+  if (VIDEO_INPUT_TEMPLATE) {
+    try {
+      return fillTemplate(JSON.parse(VIDEO_INPUT_TEMPLATE), vars);
+    } catch (e: any) {
+      throw new Error(`REPLICATE_VIDEO_INPUT is not valid JSON: ${e.message}`);
+    }
+  }
+
+  if (VIDEO_MODEL.startsWith("wavespeedai/wan-2.1-i2v")) {
+    return {
+      image: imageUrl,
+      prompt,
+      num_frames: 81,
+      max_area: aspectRatio === "9:16" ? "480x832" : "832x480",
+      frames_per_second: 16,
+      sample_steps: 40,
+      sample_guide_scale: 7.5,
+      sample_shift: 8,
+      fast_mode: "Balanced",
+    };
+  }
+
+  // Unknown model: most image-to-video models take a prompt plus an image called
+  // "image" or "start_image". If this fails, set REPLICATE_VIDEO_INPUT.
+  console.warn(`[Replicate] No preset for ${VIDEO_MODEL} - using a generic input. Set REPLICATE_VIDEO_INPUT if it fails.`);
+  return { prompt, start_image: imageUrl };
+}
+
 export async function animateImageToVideo(
   imageUrl: string,
   prompt: string,
@@ -60,22 +110,13 @@ export async function animateImageToVideo(
   console.log(`[Replicate] Prompt: ${prompt.substring(0, 200)}...`);
   console.log(`[Replicate] Image URL: ${imageUrl}`);
 
-  const maxArea = aspectRatio === "9:16" ? "480x832" : "832x480";
+  const input = buildVideoInput(imageUrl, prompt, aspectRatio);
+  console.log(`[Replicate] Model: ${VIDEO_MODEL}`);
 
   const prediction = await client.predictions.create({
-    model: "wavespeedai/wan-2.1-i2v-480p",
-    input: {
-      image: imageUrl,
-      prompt: prompt,
-      num_frames: 81,
-      max_area: maxArea,
-      frames_per_second: 16,
-      sample_steps: 40,
-      sample_guide_scale: 7.5,
-      sample_shift: 8,
-      fast_mode: "Balanced",
-    },
-  });
+    model: VIDEO_MODEL,
+    input,
+  } as any);
 
   console.log(`[Replicate] Prediction created: ${prediction.id}, waiting for AI video...`);
 
