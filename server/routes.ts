@@ -827,7 +827,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
               const fp0 = path.join(illDir, fn0);
               fs.writeFileSync(fp0, buf0);
               videoConsistencyRefPath = fp0;
-              sceneImages[0] = { imagePath: fp0, caption: scene0.caption };
+              sceneImages[0] = { imagePath: fp0, caption: scene0.caption, action: scene0.prompt };
               scenes[0] = { imageUrl: `/images/illustrations/${fn0}`, caption: scene0.caption };
               console.log(`Video scene 1 done (${videoAgeTransformedRefPath ? "age-transformed" : "original"} anchor saved)`);
             } catch (err: any) {
@@ -863,7 +863,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
             const imagePath = path.join(illDir, filename);
             fs.writeFileSync(imagePath, imageBuffer);
 
-            sceneImages[i] = { imagePath, caption: scene.caption };
+            sceneImages[i] = { imagePath, caption: scene.caption, action: scene.prompt };
             scenes[i] = {
               imageUrl: `/images/illustrations/${filename}`,
               caption: scene.caption,
@@ -879,7 +879,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
             return true;
           }, 3);
 
-          const validSceneImages = sceneImages.filter((s): s is { imagePath: string; caption: string } => s !== undefined);
+          const validSceneImages = sceneImages.filter((s): s is { imagePath: string; caption: string; action?: string } => s !== undefined);
           const validScenes = scenes.filter((s): s is { imageUrl: string; caption: string } => s !== undefined);
 
           if (cancelledVideoIds.has(video.id)) {
