@@ -1,3 +1,4 @@
+import { PRIVATE_DATA_DIR } from "./config";
 import Replicate from "replicate";
 import fs from "fs";
 import path from "path";
@@ -5,7 +6,7 @@ import https from "https";
 import http from "http";
 
 let overrideToken: string | null = null;
-const TOKEN_FILE = path.join(process.cwd(), ".replicate-token");
+const TOKEN_FILE = path.join(PRIVATE_DATA_DIR, ".replicate-token");
 
 export function setReplicateToken(token: string) {
   overrideToken = token;

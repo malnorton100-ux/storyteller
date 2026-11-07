@@ -8,6 +8,7 @@ import { generateVideoFromScenes } from "./video-generator";
 import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma-client";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { userId, userOwnsStory } from "./auth";
+import { PUBLIC_DATA_DIR } from "./config";
 import express from "express";
 import crypto from "crypto";
 import fs from "fs";
@@ -53,7 +54,7 @@ async function generateCoverForStory(storyId: number, title: string, content: st
   const prompt = `A warm, nostalgic watercolor-style book cover illustration for a personal memoir story titled "${title}". The scene depicts: ${snippet}. Style: gentle watercolor painting with soft warm golden tones, sepia undertones, storybook quality, inviting and emotional. No text or words in the image.`;
 
   const imageBuffer = await generateImageBuffer(prompt, "1024x1024");
-  const coverDir = path.join(process.cwd(), "client", "public", "images", "covers");
+  const coverDir = path.join(PUBLIC_DATA_DIR, "images", "covers");
   if (!fs.existsSync(coverDir)) fs.mkdirSync(coverDir, { recursive: true });
   const filename = `cover-${storyId}-${Date.now()}.png`;
   const imagePath = path.join(coverDir, filename);
@@ -368,8 +369,8 @@ Respond in valid JSON format ONLY:
 
       res.status(202).json({ status: "generating", totalScenes: scenes.length, storyId, jobId });
 
-      const profilePhotoPath = profile?.photoUrl ? path.join(process.cwd(), "client", "public", profile.photoUrl) : null;
-      const illDir = path.join(process.cwd(), "client", "public", "images", "illustrations");
+      const profilePhotoPath = profile?.photoUrl ? path.join(PUBLIC_DATA_DIR, profile.photoUrl) : null;
+      const illDir = path.join(PUBLIC_DATA_DIR, "images", "illustrations");
       if (!fs.existsSync(illDir)) fs.mkdirSync(illDir, { recursive: true });
 
       let completedCount = 0;
@@ -656,7 +657,7 @@ Respond in valid JSON format ONLY:
         appearanceInstruction += `CLOTHING: Same outfit on the storyteller in every scene. `;
       }
 
-      const videoProfilePhotoPath = videoProfile?.photoUrl ? path.join(process.cwd(), "client", "public", videoProfile.photoUrl) : null;
+      const videoProfilePhotoPath = videoProfile?.photoUrl ? path.join(PUBLIC_DATA_DIR, videoProfile.photoUrl) : null;
       const videoContentRating = story.contentRating || "G";
       const hasReferencePhoto = videoProfilePhotoPath && fs.existsSync(videoProfilePhotoPath);
 
@@ -791,7 +792,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
 
           const sceneImages: ({ imagePath: string; caption: string } | undefined)[] = new Array(scenesParsed.length);
           const scenes: ({ imageUrl: string; caption: string } | undefined)[] = new Array(scenesParsed.length);
-          const illDir = path.join(process.cwd(), "client", "public", "images", "illustrations");
+          const illDir = path.join(PUBLIC_DATA_DIR, "images", "illustrations");
           if (!fs.existsSync(illDir)) {
             fs.mkdirSync(illDir, { recursive: true });
           }
@@ -1086,7 +1087,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
       if (photo) {
         const photoBuffer = Buffer.from(photo, "base64");
         const filename = `profile-${Date.now()}.jpg`;
-        const photoDir = path.join(process.cwd(), "client", "public", "images", "profiles");
+        const photoDir = path.join(PUBLIC_DATA_DIR, "images", "profiles");
         if (!fs.existsSync(photoDir)) {
           fs.mkdirSync(photoDir, { recursive: true });
         }
@@ -1123,14 +1124,14 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       const allPhotos: { base64: string; url: string }[] = [];
       if (profile.photoUrl) {
-        const mainPath = path.join(process.cwd(), "client", "public", profile.photoUrl);
+        const mainPath = path.join(PUBLIC_DATA_DIR, profile.photoUrl);
         if (fs.existsSync(mainPath)) {
           allPhotos.push({ base64: fs.readFileSync(mainPath).toString("base64"), url: profile.photoUrl });
         }
       }
       if (profile.additionalPhotos) {
         for (const url of profile.additionalPhotos) {
-          const p = path.join(process.cwd(), "client", "public", url);
+          const p = path.join(PUBLIC_DATA_DIR, url);
           if (fs.existsSync(p)) {
             allPhotos.push({ base64: fs.readFileSync(p).toString("base64"), url });
           }
@@ -1164,7 +1165,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
       if (photo) {
         const photoBuffer = Buffer.from(photo, "base64");
         const filename = `profile-${id}-${Date.now()}.jpg`;
-        const photoDir = path.join(process.cwd(), "client", "public", "images", "profiles");
+        const photoDir = path.join(PUBLIC_DATA_DIR, "images", "profiles");
         if (!fs.existsSync(photoDir)) {
           fs.mkdirSync(photoDir, { recursive: true });
         }
@@ -1176,7 +1177,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
         const allPhotos: { base64: string; url: string }[] = [{ base64: photo, url: updates.photoUrl }];
         if (existingProfile?.additionalPhotos) {
           for (const additionalUrl of existingProfile.additionalPhotos) {
-            const filePath = path.join(process.cwd(), "client", "public", additionalUrl);
+            const filePath = path.join(PUBLIC_DATA_DIR, additionalUrl);
             if (fs.existsSync(filePath)) {
               const buf = fs.readFileSync(filePath);
               allPhotos.push({ base64: buf.toString("base64"), url: additionalUrl });
@@ -1206,7 +1207,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       const photoBuffer = Buffer.from(photo, "base64");
       const filename = `profile-${id}-extra-${Date.now()}.jpg`;
-      const photoDir = path.join(process.cwd(), "client", "public", "images", "profiles");
+      const photoDir = path.join(PUBLIC_DATA_DIR, "images", "profiles");
       if (!fs.existsSync(photoDir)) fs.mkdirSync(photoDir, { recursive: true });
       fs.writeFileSync(path.join(photoDir, filename), photoBuffer);
       const newPhotoUrl = `/images/profiles/${filename}`;
@@ -1216,13 +1217,13 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       const allPhotos: { base64: string; url: string }[] = [];
       if (profile.photoUrl) {
-        const mainPath = path.join(process.cwd(), "client", "public", profile.photoUrl);
+        const mainPath = path.join(PUBLIC_DATA_DIR, profile.photoUrl);
         if (fs.existsSync(mainPath)) {
           allPhotos.push({ base64: fs.readFileSync(mainPath).toString("base64"), url: profile.photoUrl });
         }
       }
       for (const url of updatedAdditional) {
-        const filePath = path.join(process.cwd(), "client", "public", url);
+        const filePath = path.join(PUBLIC_DATA_DIR, url);
         if (fs.existsSync(filePath)) {
           allPhotos.push({ base64: fs.readFileSync(filePath).toString("base64"), url });
         }
@@ -1255,13 +1256,13 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       const allPhotos: { base64: string; url: string }[] = [];
       if (profile.photoUrl) {
-        const mainPath = path.join(process.cwd(), "client", "public", profile.photoUrl);
+        const mainPath = path.join(PUBLIC_DATA_DIR, profile.photoUrl);
         if (fs.existsSync(mainPath)) {
           allPhotos.push({ base64: fs.readFileSync(mainPath).toString("base64"), url: profile.photoUrl });
         }
       }
       for (const url of updatedAdditional) {
-        const filePath = path.join(process.cwd(), "client", "public", url);
+        const filePath = path.join(PUBLIC_DATA_DIR, url);
         if (fs.existsSync(filePath)) {
           allPhotos.push({ base64: fs.readFileSync(filePath).toString("base64"), url });
         }
@@ -1326,7 +1327,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       if (voiceSample) {
         const audioBuffer = Buffer.from(voiceSample, "base64");
-        const audioDir = path.join(process.cwd(), "client", "public", "audio", "voice-samples");
+        const audioDir = path.join(PUBLIC_DATA_DIR, "audio", "voice-samples");
         if (!fs.existsSync(audioDir)) {
           fs.mkdirSync(audioDir, { recursive: true });
         }
@@ -1599,7 +1600,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       const imageToBase64 = (relUrl: string): string => {
         try {
-          const filePath = path.join(process.cwd(), "client", "public", relUrl);
+          const filePath = path.join(PUBLIC_DATA_DIR, relUrl);
           if (fs.existsSync(filePath)) {
             const data = fs.readFileSync(filePath);
             const ext = path.extname(filePath).replace(".", "").toLowerCase();
