@@ -49,3 +49,5 @@ Defaults are in `server/config.ts`. Override in Railway → Variables when OpenA
 | `OPENAI_TEXT_MODEL` | `gpt-5.2` | |
 | `OPENAI_AUDIO_MODEL` | `gpt-audio` | retires 20 Jan 2027 → `gpt-audio-1.5` |
 | `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-mini-transcribe` | retires 26 Feb 2027 → `gpt-transcribe` |
+| `REPLICATE_VIDEO_MODEL` | `wavespeedai/wan-2.1-i2v-480p` | the model that animates each scene (older, 480p) |
+| `REPLICATE_VIDEO_INPUT` | *(preset)* | JSON of the model's inputs with `{{image}}`, `{{prompt}}`, `{{aspect_ratio}}` placeholders - copy input names from the model's API tab on replicate.com |
