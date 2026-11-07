@@ -1050,7 +1050,7 @@ export default function StoryDetail() {
         {isGeneratingVideo && (
           <WorkingBanner
             title="We're bringing your memories to life"
-            stepLabel="Bringing each scene to life"
+            stepLabel="Painting and animating every scene"
             messages={[
               "Every scene is being animated, frame by frame.",
               "Good things take time — this is a one-of-a-kind film.",
@@ -1059,13 +1059,13 @@ export default function StoryDetail() {
               "Adding movement, light and life to each moment…",
               "Nearly every great story is worth the wait.",
             ]}
-            done={pollingVideo?.scenes ? (pollingVideo.scenes as any[]).length : 0}
-            total={4}
+            done={0}
+            total={0}
             startedAt={
               videoStartedAt ??
               new Date((pollingVideo?.createdAt || generatingVideos[0]?.createdAt || Date.now()) as any).getTime()
             }
-            usualMinutes={8}
+            usualMinutes={7}
             testId="banner-video-working"
             onCancel={async () => {
               const videoId = pollingVideoId || generatingVideos[0]?.id;

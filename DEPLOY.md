@@ -51,3 +51,13 @@ Defaults are in `server/config.ts`. Override in Railway → Variables when OpenA
 | `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-mini-transcribe` | retires 26 Feb 2027 → `gpt-transcribe` |
 | `REPLICATE_VIDEO_MODEL` | `wavespeedai/wan-2.1-i2v-480p` | the model that animates each scene (older, 480p) |
 | `REPLICATE_VIDEO_INPUT` | *(preset)* | JSON of the model's inputs with `{{image}}`, `{{prompt}}`, `{{aspect_ratio}}` placeholders - copy input names from the model's API tab on replicate.com |
+
+## Email notifications (optional)
+"Your movie is ready" / "couldn't finish" emails are sent through Resend when these are set:
+
+| Variable | Value |
+|---|---|
+| `RESEND_API_KEY` | from resend.com → API Keys |
+| `EMAIL_FROM` | e.g. `Storyteller <hello@yourdomain.com>` (needs the domain verified in Resend; without it Resend's test sender only delivers to your own Resend sign-up email) |
+
+Other movie settings: `VIDEO_CLIP_SECONDS` (5 or 10, default 10), `VIDEO_PARALLEL_SCENES` (default 4), `VIDEO_MAX_SIDE` (default 960).

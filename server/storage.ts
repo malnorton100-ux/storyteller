@@ -117,6 +117,12 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  /** Movies left "generating" when the server restarted can never finish - mark them failed. */
+  async failInterruptedVideos(): Promise<number> {
+    const rows = await db.update(storyVideos).set({ status: "failed" }).where(eq(storyVideos.status, "generating")).returning();
+    return rows.length;
+  }
+
   async updateStoryVideo(id: number, data: Partial<InsertStoryVideo>): Promise<StoryVideo | undefined> {
     const [updated] = await db.update(storyVideos).set(data).where(eq(storyVideos.id, id)).returning();
     return updated;
