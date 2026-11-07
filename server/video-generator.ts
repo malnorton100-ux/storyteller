@@ -296,6 +296,35 @@ async function stitchClipsWithTransitions(
   }
 }
 
+/** Log how much storage is free, so a full disk is obvious in the logs. */
+export function logFreeSpace(dir: string) {
+  try {
+    const st = (fs as any).statfsSync(dir);
+    const freeMb = Math.round((st.bavail * st.bsize) / 1024 / 1024);
+    const totalMb = Math.round((st.blocks * st.bsize) / 1024 / 1024);
+    console.log(`[VideoGen] Storage: ${freeMb} MB free of ${totalMb} MB`);
+    if (freeMb < 300) console.warn(`[VideoGen] WARNING: storage almost full (${freeMb} MB free)`);
+  } catch {}
+}
+
+/**
+ * Remove leftovers from movies that failed or were interrupted (e.g. by a
+ * redeploy): temp clip folders, work folders and half-made files. Runs on start-up.
+ */
+export function cleanUpVideoLeftovers() {
+  const dir = path.join(PUBLIC_DATA_DIR, "videos");
+  if (!fs.existsSync(dir)) return;
+  let removed = 0;
+  for (const name of fs.readdirSync(dir)) {
+    const full = path.join(dir, name);
+    if (/^(temp-clips-|work-|norm-)/.test(name) || /^(narration-|gap-silence-|silence-)/.test(name) || /-videoonly\.mp4$/.test(name)) {
+      try { fs.rmSync(full, { recursive: true, force: true }); removed++; } catch {}
+    }
+  }
+  if (removed) console.log(`[VideoGen] Cleaned up ${removed} leftover temporary item(s)`);
+  logFreeSpace(dir);
+}
+
 export async function generateVideoFromScenes(
   scenes: SceneInput[],
   outputFilename: string,
@@ -321,6 +350,7 @@ export async function generateVideoFromScenes(
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
+  logFreeSpace(outputDir);
   const outputPath = path.join(outputDir, outputFilename);
   const tempDir = path.join(outputDir, "temp-clips-" + Date.now());
   fs.mkdirSync(tempDir, { recursive: true });
@@ -396,17 +426,16 @@ export async function generateVideoFromScenes(
     narrationPaths = await generateNarrationAudio(captions, narration.voice, tempDir);
   }
 
-  await stitchClipsWithTransitions(clipPaths, outputPath, narrationPaths);
-
-  for (const clip of clipPaths) {
-    try { fs.unlinkSync(clip); } catch {}
+  try {
+    await stitchClipsWithTransitions(clipPaths, outputPath, narrationPaths);
+  } catch (err) {
+    // Don't leave a half-written movie behind.
+    try { fs.unlinkSync(outputPath); } catch {}
+    throw err;
+  } finally {
+    // Always remove the downloaded clips and narration - they are large.
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
   }
-  if (narrationPaths) {
-    for (const np of narrationPaths) {
-      if (np) try { fs.unlinkSync(np); } catch {}
-    }
-  }
-  try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
 
   if (!fs.existsSync(outputPath)) {
     throw new Error("Final video file was not created");

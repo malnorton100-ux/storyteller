@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertStorySchema } from "@shared/schema";
 import { openai, ensureCompatibleFormat, speechToText, textToSpeech } from "./replit_integrations/audio/client";
 import { generateImageBuffer, generateImageWithReference } from "./replit_integrations/image/client";
-import { generateVideoFromScenes } from "./video-generator";
+import { generateVideoFromScenes, cleanUpVideoLeftovers } from "./video-generator";
 import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma-client";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { userId, userOwnsStory, isOwner } from "./auth";
@@ -70,6 +70,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   app.use(express.json({ limit: "50mb" }));
+  try { cleanUpVideoLeftovers(); } catch (e) { console.warn("[VideoGen] Cleanup skipped:", (e as Error).message); }
 
   app.get("/api/stories", async (req, res) => {
     try {
@@ -963,7 +964,17 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
     try {
       const id = parseInt(req.params.id);
       cancelledVideoIds.add(id);
+      const video = await storage.getStoryVideo(id);
       await storage.deleteStoryVideo(id);
+      // Free the storage too: the movie file and the pictures made for it.
+      if (video) {
+        const files = [video.videoUrl, ...((video.scenes as any[]) || []).map((s) => s?.imageUrl)].filter(Boolean) as string[];
+        for (const url of files) {
+          if (!/^\/(videos|images\/illustrations)\//.test(url)) continue;
+          const filePath = path.join(PUBLIC_DATA_DIR, url);
+          if (filePath.startsWith(PUBLIC_DATA_DIR)) { try { fs.unlinkSync(filePath); } catch {} }
+        }
+      }
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting video:", error);
