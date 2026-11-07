@@ -1116,6 +1116,9 @@ export default function StoryDetail() {
             title="We're bringing your memories to life"
             stepLabel="Painting and animating every scene"
             messages={[
+              completedVideos.some((v) => v.style === "preview")
+                ? "Your quick preview is ready below - watch it while we finish the full movie."
+                : "A quick preview will appear below in about a minute.",
               "Every scene is being animated, frame by frame.",
               "Good things take time — this is a one-of-a-kind film.",
               "Perfect time to put the kettle on. ☕",
@@ -1545,13 +1548,13 @@ export default function StoryDetail() {
                           </div>
                         </div>
                         <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm rounded-md px-2 py-1">
-                          <span className="text-white text-xs font-medium">VIDEO</span>
+                          <span className="text-white text-xs font-medium">{video.style === "preview" ? "QUICK PREVIEW" : "VIDEO"}</span>
                         </div>
                       </div>
                       <div className="p-3 flex items-center justify-between gap-1">
                         <div className="flex items-center gap-2">
                           <Film className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm capitalize">{video.style} style</span>
+                          <span className="text-sm">{video.style === "preview" ? "Quick preview - full movie on its way" : <span className="capitalize">{video.style} style</span>}</span>
                         </div>
                         <div className="flex gap-1">
                           <Button

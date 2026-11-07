@@ -334,6 +334,55 @@ export function cleanUpVideoLeftovers() {
   logFreeSpace(dir);
 }
 
+/**
+ * QUICK PREVIEW: a movie made in about a minute, with no AI video. Each storybook
+ * picture gets a slow cinematic push-in or pan, soft fades between pictures and
+ * the narration over the top. Shown while the full animated movie is made.
+ */
+export async function generatePreviewMovie(
+  scenes: SceneInput[],
+  outputFilename: string,
+  narration?: NarrationConfig
+): Promise<string> {
+  const outputDir = path.join(PUBLIC_DATA_DIR, "videos");
+  fs.mkdirSync(outputDir, { recursive: true });
+  const outputPath = path.join(outputDir, outputFilename);
+  const tempDir = path.join(outputDir, "temp-clips-preview-" + Date.now());
+  fs.mkdirSync(tempDir, { recursive: true });
+  try {
+    let narrationPaths: string[] | undefined;
+    if (narration?.enabled) {
+      narrationPaths = await generateNarrationAudio(scenes.map((sc) => sc.caption), narration.voice, tempDir);
+    }
+    const clips: string[] = [];
+    for (let i = 0; i < scenes.length; i++) {
+      const narr = narrationPaths?.[i] ? await probeClipDuration(narrationPaths[i]) : 0;
+      const dur = Math.max(5, narr + 1.2);
+      const frames = Math.round(dur * 24);
+      // Alternate the movement so it doesn't feel repetitive.
+      const moves = [
+        `zoompan=z='1+0.12*on/${frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
+        `zoompan=z='1.12':x='(iw-iw/zoom)*on/${frames}':y='ih/2-(ih/zoom/2)'`,
+        `zoompan=z='1.12-0.12*on/${frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
+        `zoompan=z='1.12':x='(iw-iw/zoom)*(1-on/${frames})':y='(ih-ih/zoom)*0.3'`,
+      ];
+      const clip = path.join(tempDir, `p${i}.mp4`);
+      // Upscale first so the slow zoom stays smooth (no jitter).
+      await execAsync(
+        `ffmpeg -y -loglevel error -loop 1 -i "${scenes[i].imagePath}" -vf "scale=1920:1920:force_original_aspect_ratio=increase,crop=1920:1920,${moves[i % moves.length]}:d=${frames}:s=960x960:fps=24,format=yuv420p" -frames:v ${frames} -c:v libx264 -preset veryfast -crf 21 -threads 2 "${clip}"`,
+        { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }
+      );
+      clips.push(clip);
+    }
+    await stitchClipsWithTransitions(clips, outputPath, narrationPaths);
+    if (!fs.existsSync(outputPath)) throw new Error("Preview movie was not created");
+    console.log(`[VideoGen] Quick preview ready: ${outputFilename}`);
+    return `/videos/${outputFilename}`;
+  } finally {
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
 export async function generateVideoFromScenes(
   scenes: SceneInput[],
   outputFilename: string,
