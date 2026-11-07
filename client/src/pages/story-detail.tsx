@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { StoryPlayer } from "@/components/story-player";
+import { WorkingBanner } from "@/components/working-banner";
 import type { Story, Illustration, StoryVideo, StorytellerProfile, Purchase, StoryPerspective } from "@shared/schema";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -244,6 +245,8 @@ export default function StoryDetail() {
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [isGeneratingIllustrations, setIsGeneratingIllustrations] = useState(false);
   const [illustrationJobId, setIllustrationJobId] = useState<string | null>(null);
+  const [illustrationStartedAt, setIllustrationStartedAt] = useState<number>(Date.now());
+  const [videoStartedAt, setVideoStartedAt] = useState<number | null>(null);
   const [illustrationProgress, setIllustrationProgress] = useState({ completed: 0, total: 4 });
   const [enableNarration, setEnableNarration] = useState(true);
   const [sceneCount, setSceneCount] = useState(4);
@@ -402,6 +405,7 @@ export default function StoryDetail() {
       setDialogOpen(false);
       setIsGeneratingIllustrations(true);
       setIllustrationJobId(data.jobId);
+      setIllustrationStartedAt(Date.now());
       setIllustrationProgress({ completed: 0, total: data.totalScenes || sceneCount });
       toast({ title: "Creating your story illustrations...", description: `AI is generating ${data.totalScenes || sceneCount} scenes from your story. This takes about a minute.` });
     },
@@ -455,12 +459,13 @@ export default function StoryDetail() {
     onSuccess: (data) => {
       setVideoDialogOpen(false);
       setPollingVideoId(data.id);
+      setVideoStartedAt(Date.now());
       const hasNarration = enableNarration && profileHasVoice;
       toast({
-        title: "Creating your AI movie...",
+        title: "We're bringing your memories to life 🎬",
         description: hasNarration
-          ? "AI is generating video clips and narration for each scene. This takes 4-6 minutes."
-          : "AI is generating real moving video clips for each scene. This takes 3-5 minutes.",
+          ? "We're bringing your memories to life, with narration. This takes about 5–10 minutes."
+          : "We're bringing your memories to life. This takes about 5–10 minutes.",
       });
     },
     onError: () => {
@@ -887,8 +892,11 @@ export default function StoryDetail() {
                       ))}
                     </div>
                   </div>
+                  <p className="text-base text-foreground/80 text-center" data-testid="text-illustration-wait-note">
+                    🎨 Painting your pictures takes about 1–2 minutes.
+                  </p>
                   <Button
-                    className="w-full"
+                    className="w-full h-12 text-base"
                     onClick={() => generateMutation.mutate(selectedStyle)}
                     disabled={generateMutation.isPending || isGeneratingIllustrations}
                     data-testid="button-generate"
@@ -896,7 +904,7 @@ export default function StoryDetail() {
                     {generateMutation.isPending || isGeneratingIllustrations ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {isGeneratingIllustrations ? "Generating scenes..." : "Starting..."}
+                        {isGeneratingIllustrations ? "Painting pictures..." : "Starting..."}
                       </>
                     ) : (
                       <>
@@ -1004,8 +1012,12 @@ export default function StoryDetail() {
                       )}
                     </div>
                   )}
+                  <div className="rounded-lg bg-primary/10 border border-primary/30 p-4 text-base" data-testid="text-video-wait-note">
+                    <p className="font-semibold">🎬 Making a movie takes about 5–10 minutes.</p>
+                    <p className="text-foreground/80 mt-1">Every scene is animated just for your story. You can leave this page and come back — we'll keep working.</p>
+                  </div>
                   <Button
-                    className="w-full"
+                    className="w-full h-12 text-base"
                     onClick={() => generateVideoMutation.mutate(selectedStyle)}
                     disabled={generateVideoMutation.isPending || isGeneratingVideo}
                     data-testid="button-generate-video"
@@ -1013,7 +1025,7 @@ export default function StoryDetail() {
                     {generateVideoMutation.isPending || isGeneratingVideo ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {isGeneratingVideo ? "Already generating..." : "Starting..."}
+                        {isGeneratingVideo ? "Making your movie..." : "Starting..."}
                       </>
                     ) : (
                       <>
@@ -1040,6 +1052,70 @@ export default function StoryDetail() {
             </Button>
           </div>
         </div>
+
+        {isGeneratingVideo && (
+          <WorkingBanner
+            title="We're bringing your memories to life"
+            stepLabel="Bringing each scene to life"
+            messages={[
+              "Every scene is being animated, frame by frame.",
+              "Good things take time — this is a one-of-a-kind film.",
+              "Perfect time to put the kettle on. ☕",
+              "Your memories are becoming something the whole family can watch.",
+              "Adding movement, light and life to each moment…",
+              "Nearly every great story is worth the wait.",
+            ]}
+            done={pollingVideo?.scenes ? (pollingVideo.scenes as any[]).length : 0}
+            total={4}
+            startedAt={
+              videoStartedAt ??
+              new Date((pollingVideo?.createdAt || generatingVideos[0]?.createdAt || Date.now()) as any).getTime()
+            }
+            usualMinutes={8}
+            testId="banner-video-working"
+            onCancel={async () => {
+              const videoId = pollingVideoId || generatingVideos[0]?.id;
+              if (videoId) {
+                try {
+                  await apiRequest("POST", `/api/videos/${videoId}/cancel`);
+                } catch {}
+              }
+              setPollingVideoId(null);
+              setVideoStartedAt(null);
+              queryClient.invalidateQueries({ queryKey: ["/api/stories", storyId, "videos"] });
+              toast({ title: "Movie stopped" });
+            }}
+          />
+        )}
+
+        {isGeneratingIllustrations && (
+          <WorkingBanner
+            title="We're painting your memories"
+            stepLabel="Picture"
+            messages={[
+              "Each picture is being painted just for your story.",
+              "Getting the faces, clothes and places just right…",
+              "Bringing back the look and feel of the era…",
+              "Almost like flipping through an old photo album.",
+            ]}
+            done={illustrationProgress.completed}
+            total={illustrationProgress.total}
+            startedAt={illustrationStartedAt}
+            usualMinutes={2}
+            testId="banner-illustrations-working"
+            onCancel={async () => {
+              if (illustrationJobId) {
+                try {
+                  await apiRequest("POST", `/api/illustration-jobs/${illustrationJobId}/cancel`);
+                } catch {}
+              }
+              setIsGeneratingIllustrations(false);
+              setIllustrationJobId(null);
+              queryClient.invalidateQueries({ queryKey: ["/api/stories", storyId] });
+              toast({ title: "Pictures stopped", description: "Any finished pictures have been kept." });
+            }}
+          />
+        )}
 
         {story.coverImageUrl && (
           <img
@@ -1379,44 +1455,6 @@ export default function StoryDetail() {
           </section>
         )}
 
-        {isGeneratingVideo && (
-          <Card>
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Loader2 className="h-5 w-5 text-primary animate-spin" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Creating your animated story...</p>
-                    <p className="text-sm text-muted-foreground">
-                      AI is generating {pollingVideo?.scenes ? (pollingVideo.scenes as any[]).length : 0} of 4 scenes. This takes a few minutes.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    const videoId = pollingVideoId || generatingVideos[0]?.id;
-                    if (videoId) {
-                      try {
-                        await apiRequest("POST", `/api/videos/${videoId}/cancel`);
-                      } catch {}
-                    }
-                    setPollingVideoId(null);
-                    queryClient.invalidateQueries({ queryKey: ["/api/stories", storyId, "videos"] });
-                    toast({ title: "Video generation cancelled" });
-                  }}
-                  data-testid="button-cancel-video"
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {completedVideos.length > 0 && (
           <section className="space-y-4 pt-4">
@@ -1510,44 +1548,6 @@ export default function StoryDetail() {
           </div>
         )}
 
-        {isGeneratingIllustrations && (
-          <Card>
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Loader2 className="h-5 w-5 text-primary animate-spin" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Creating your story illustrations...</p>
-                    <p className="text-sm text-muted-foreground">
-                      AI is illustrating {illustrationProgress.completed} of {illustrationProgress.total} scenes. New images will appear as they're ready.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    if (illustrationJobId) {
-                      try {
-                        await apiRequest("POST", `/api/illustration-jobs/${illustrationJobId}/cancel`);
-                      } catch {}
-                    }
-                    setIsGeneratingIllustrations(false);
-                    setIllustrationJobId(null);
-                    queryClient.invalidateQueries({ queryKey: ["/api/stories", storyId] });
-                    toast({ title: "Illustration generation cancelled", description: "Any completed scenes have been saved." });
-                  }}
-                  data-testid="button-cancel-illustrations"
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {story.illustrations && story.illustrations.length > 0 && (() => {
           const sceneSets: Illustration[][] = [];
