@@ -1,3 +1,4 @@
+import { PUBLIC_DATA_DIR, publicBaseUrl } from "./config";
 import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
@@ -19,17 +20,8 @@ interface NarrationConfig {
 }
 
 function getPublicImageUrl(imagePath: string): string {
-  const relativePath = imagePath.replace(path.join(process.cwd(), "client", "public"), "");
-  const devDomain = process.env.REPLIT_DEV_DOMAIN;
-  if (devDomain) {
-    return `https://${devDomain}${relativePath}`;
-  }
-  const slug = process.env.REPL_SLUG;
-  const owner = process.env.REPL_OWNER;
-  if (slug && owner) {
-    return `https://${slug}.${owner}.repl.co${relativePath}`;
-  }
-  return `http://localhost:5000${relativePath}`;
+  const relativePath = imagePath.replace(path.join(PUBLIC_DATA_DIR), "");
+  return `${publicBaseUrl()}${relativePath.split(path.sep).join("/")}`;
 }
 
 async function probeClipDuration(clipPath: string): Promise<number> {
@@ -296,7 +288,7 @@ export async function generateVideoFromScenes(
     throw new Error("AI video generation requires a Replicate API token with credits. Please add credits at replicate.com/account/billing. Slideshow fallback is disabled — only real AI video clips are generated.");
   }
 
-  const outputDir = path.join(process.cwd(), "client", "public", "videos");
+  const outputDir = path.join(PUBLIC_DATA_DIR, "videos");
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }

@@ -1,3 +1,5 @@
+import fs from "fs";
+import { PUBLIC_DATA_DIR, PRIVATE_DATA_DIR, publicBaseUrl, hasPublicUrl } from "./config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -56,9 +58,8 @@ async function initStripe() {
     const stripeSync = await getStripeSync();
 
     console.log('Setting up managed webhook...');
-    const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
-    if (replitDomain) {
-      const webhookBaseUrl = `https://${replitDomain}`;
+    if (hasPublicUrl()) {
+      const webhookBaseUrl = publicBaseUrl();
       try {
         const result = await stripeSync.findOrCreateManagedWebhook(
           `${webhookBaseUrl}/api/stripe/webhook`
@@ -68,7 +69,7 @@ async function initStripe() {
         console.warn('Webhook setup skipped (non-critical):', webhookErr instanceof Error ? webhookErr.message : webhookErr);
       }
     } else {
-      console.warn('REPLIT_DOMAINS not set, skipping webhook setup');
+      console.warn('No public URL (PUBLIC_URL / RAILWAY_PUBLIC_DOMAIN) set, skipping webhook setup');
     }
 
     stripeSync.syncBackfill()
@@ -170,6 +171,10 @@ app.use((req, res, next) => {
   });
 
   if (process.env.NODE_ENV === "production") {
+    // Uploaded/generated files (photos, illustrations, videos) live outside the build.
+    fs.mkdirSync(PUBLIC_DATA_DIR, { recursive: true });
+    fs.mkdirSync(PRIVATE_DATA_DIR, { recursive: true });
+    app.use(express.static(PUBLIC_DATA_DIR, { index: false }));
     serveStatic(app);
   } else {
     const { setupVite } = await import("./vite");

@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.replicate-token
+client/public/videos
+client/public/images/illustrations
+client/public/images/profiles
+client/public/audio/voice-samples
+*.tar.gz
