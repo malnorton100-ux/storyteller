@@ -15,6 +15,8 @@ type Props = {
   usualMinutes: number;
   onCancel?: () => void;
   testId?: string;
+  /** Friendly lines that rotate every few seconds while waiting. */
+  messages?: string[];
 };
 
 function formatElapsed(ms: number) {
@@ -29,7 +31,7 @@ function formatElapsed(ms: number) {
  * of the page while the AI is busy. Written for older users: large text,
  * plain words, a moving progress bar, a running clock and reassurance.
  */
-export function WorkingBanner({ title, stepLabel, done, total, startedAt, usualMinutes, onCancel, testId }: Props) {
+export function WorkingBanner({ title, stepLabel, done, total, startedAt, usualMinutes, onCancel, testId, messages }: Props) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -41,6 +43,7 @@ export function WorkingBanner({ title, stepLabel, done, total, startedAt, usualM
   const pct = Math.min(95, Math.max(5, Math.round((done / safeTotal) * 100)));
   const elapsed = now - startedAt;
   const overTime = elapsed > usualMinutes * 60 * 1000 * 1.5;
+  const rotating = messages && messages.length > 0 ? messages[Math.floor(elapsed / 8000) % messages.length] : null;
 
   return (
     <div
@@ -60,6 +63,12 @@ export function WorkingBanner({ title, stepLabel, done, total, startedAt, usualM
           </p>
         </div>
       </div>
+
+      {rotating && (
+        <p key={rotating} className="text-lg italic text-primary font-medium animate-in fade-in duration-700" data-testid={testId ? `${testId}-message` : undefined}>
+          {rotating}
+        </p>
+      )}
 
       <div className="h-4 w-full rounded-full bg-primary/15 overflow-hidden" aria-hidden="true">
         <div

@@ -462,10 +462,10 @@ export default function StoryDetail() {
       setVideoStartedAt(Date.now());
       const hasNarration = enableNarration && profileHasVoice;
       toast({
-        title: "Creating your AI movie...",
+        title: "We're bringing your memories to life 🎬",
         description: hasNarration
-          ? "AI is generating video clips and narration for each scene. This takes 4-6 minutes."
-          : "AI is generating real moving video clips for each scene. This takes 3-5 minutes.",
+          ? "We're bringing your memories to life, with narration. This takes about 5–10 minutes."
+          : "We're bringing your memories to life. This takes about 5–10 minutes.",
       });
     },
     onError: () => {
@@ -892,8 +892,11 @@ export default function StoryDetail() {
                       ))}
                     </div>
                   </div>
+                  <p className="text-base text-foreground/80 text-center" data-testid="text-illustration-wait-note">
+                    🎨 Painting your pictures takes about 1–2 minutes.
+                  </p>
                   <Button
-                    className="w-full"
+                    className="w-full h-12 text-base"
                     onClick={() => generateMutation.mutate(selectedStyle)}
                     disabled={generateMutation.isPending || isGeneratingIllustrations}
                     data-testid="button-generate"
@@ -1009,8 +1012,12 @@ export default function StoryDetail() {
                       )}
                     </div>
                   )}
+                  <div className="rounded-lg bg-primary/10 border border-primary/30 p-4 text-base" data-testid="text-video-wait-note">
+                    <p className="font-semibold">🎬 Making a movie takes about 5–10 minutes.</p>
+                    <p className="text-foreground/80 mt-1">Every scene is animated just for your story. You can leave this page and come back — we'll keep working.</p>
+                  </div>
                   <Button
-                    className="w-full"
+                    className="w-full h-12 text-base"
                     onClick={() => generateVideoMutation.mutate(selectedStyle)}
                     disabled={generateVideoMutation.isPending || isGeneratingVideo}
                     data-testid="button-generate-video"
@@ -1048,15 +1055,23 @@ export default function StoryDetail() {
 
         {isGeneratingVideo && (
           <WorkingBanner
-            title="Making your movie"
+            title="We're bringing your memories to life"
             stepLabel="Bringing each scene to life"
+            messages={[
+              "Every scene is being animated, frame by frame.",
+              "Good things take time — this is a one-of-a-kind film.",
+              "Perfect time to put the kettle on. ☕",
+              "Your memories are becoming something the whole family can watch.",
+              "Adding movement, light and life to each moment…",
+              "Nearly every great story is worth the wait.",
+            ]}
             done={pollingVideo?.scenes ? (pollingVideo.scenes as any[]).length : 0}
             total={4}
             startedAt={
               videoStartedAt ??
               new Date((pollingVideo?.createdAt || generatingVideos[0]?.createdAt || Date.now()) as any).getTime()
             }
-            usualMinutes={6}
+            usualMinutes={8}
             testId="banner-video-working"
             onCancel={async () => {
               const videoId = pollingVideoId || generatingVideos[0]?.id;
@@ -1075,8 +1090,14 @@ export default function StoryDetail() {
 
         {isGeneratingIllustrations && (
           <WorkingBanner
-            title="Painting your pictures"
+            title="We're painting your memories"
             stepLabel="Picture"
+            messages={[
+              "Each picture is being painted just for your story.",
+              "Getting the faces, clothes and places just right…",
+              "Bringing back the look and feel of the era…",
+              "Almost like flipping through an old photo album.",
+            ]}
             done={illustrationProgress.completed}
             total={illustrationProgress.total}
             startedAt={illustrationStartedAt}
