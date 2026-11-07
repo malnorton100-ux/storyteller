@@ -740,6 +740,16 @@ export default function StoryDetail() {
             </Button>
           </Link>
           <div className="flex flex-wrap gap-2">
+            {hasPdfPurchase && (story as any)?.illustrations?.length > 0 && (
+              <Button
+                variant="secondary"
+                onClick={() => window.open(`/api/stories/${storyId}/download/pdf`, "_blank")}
+                data-testid="button-download-pdf"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download book
+              </Button>
+            )}
             <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="secondary" onClick={handleOpenShareDialog} data-testid="button-share-story">
