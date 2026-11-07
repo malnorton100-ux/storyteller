@@ -107,6 +107,42 @@ async function generateNarrationAudio(
   return audioPaths;
 }
 
+/** Run ffmpeg and, if it fails, log the useful last lines of its output. */
+async function runFfmpeg(cmd: string, timeout: number, step: string): Promise<void> {
+  try {
+    await execAsync(`${cmd} 2>&1`, { timeout, maxBuffer: 20 * 1024 * 1024 });
+  } catch (err: any) {
+    const out = String(err.stdout || err.stderr || "").trim().split("\n").slice(-8).join(" | ");
+    console.error(`[VideoGen] ffmpeg failed at "${step}"${err.killed ? " (timed out)" : ""}: ${out || err.message}`);
+    throw new Error(`ffmpeg failed at ${step}`);
+  }
+}
+
+/** Join same-format clips with a mix of fade transitions. */
+async function joinWithTransitions(clips: string[], durations: number[], transition: number, out: string): Promise<void> {
+  if (clips.length === 1) {
+    fs.copyFileSync(clips[0], out);
+    return;
+  }
+  const inputs = clips.map((p) => `-i "${p}"`).join(" ");
+  const names = ["fade", "dissolve", "smoothleft", "circlecrop", "fadeblack"];
+  const chain: string[] = [];
+  let last = "0:v";
+  let offset = 0;
+  for (let i = 1; i < clips.length; i++) {
+    const t = Math.min(transition, durations[i - 1] * 0.4);
+    offset += durations[i - 1] - t;
+    const label = i < clips.length - 1 ? `x${i}` : "outv";
+    chain.push(`[${last}][${i}:v]xfade=transition=${names[i % names.length]}:duration=${t.toFixed(2)}:offset=${offset.toFixed(2)}[${label}]`);
+    last = label;
+  }
+  await runFfmpeg(
+    `ffmpeg -y ${inputs} -filter_complex "${chain.join(";")}" -map "[outv]" -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -movflags +faststart -an "${out}"`,
+    300000,
+    "add transitions"
+  );
+}
+
 async function stitchClipsWithTransitions(
   clipPaths: string[],
   outputPath: string,
@@ -117,8 +153,8 @@ async function stitchClipsWithTransitions(
   const hasNarration = narrationPaths && narrationPaths.some(p => p !== "");
 
   if (clipPaths.length === 1 && !hasNarration) {
-    const cmd = `ffmpeg -y -i "${clipPaths[0]}" -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p -movflags +faststart -an "${outputPath}" 2>&1`;
-    await execAsync(cmd, { timeout: 60000 });
+    const cmd = `ffmpeg -y -i "${clipPaths[0]}" -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -movflags +faststart -an "${outputPath}" 2>&1`;
+    await execAsync(cmd, { timeout: 180000, maxBuffer: 20 * 1024 * 1024 });
     return;
   }
 
@@ -131,68 +167,57 @@ async function stitchClipsWithTransitions(
   if (clipPaths.length === 1 && hasNarration) {
     const narrationPath = narrationPaths![0] || "";
     if (narrationPath) {
-      const cmd = `ffmpeg -y -i "${clipPaths[0]}" -i "${narrationPath}" -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p -movflags +faststart -c:a aac -b:a 128k -shortest "${outputPath}" 2>&1`;
-      await execAsync(cmd, { timeout: 60000 });
+      const cmd = `ffmpeg -y -i "${clipPaths[0]}" -i "${narrationPath}" -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -movflags +faststart -c:a aac -b:a 128k -shortest "${outputPath}" 2>&1`;
+      await execAsync(cmd, { timeout: 180000, maxBuffer: 20 * 1024 * 1024 });
     } else {
-      const cmd = `ffmpeg -y -i "${clipPaths[0]}" -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p -movflags +faststart -an "${outputPath}" 2>&1`;
-      await execAsync(cmd, { timeout: 60000 });
+      const cmd = `ffmpeg -y -i "${clipPaths[0]}" -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -movflags +faststart -an "${outputPath}" 2>&1`;
+      await execAsync(cmd, { timeout: 180000, maxBuffer: 20 * 1024 * 1024 });
     }
     return;
   }
 
-  const inputs = clipPaths.map((p) => `-i "${p}"`).join(" ");
-  const filterParts: string[] = [];
-
-  for (let i = 0; i < clipPaths.length; i++) {
-    filterParts.push(
-      `[${i}:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,` +
-      `setpts=PTS-STARTPTS,fps=24[v${i}]`
-    );
-  }
-
+  // Every clip is first converted to exactly the same size, shape, frame rate and
+  // format. Different AI video models return slightly different clips, and the
+  // fade-between-scenes step refuses to join clips that don't match exactly.
   const minClipDuration = Math.min(...durations);
   const transitionDuration = Math.min(1.0, minClipDuration * 0.4);
-  let lastLabel = "v0";
-  const xfadeChain: string[] = [];
-  let cumulativeOffset = 0;
 
-  for (let i = 1; i < clipPaths.length; i++) {
-    const prevDuration = durations[i - 1];
-    const effectiveTransition = Math.min(transitionDuration, prevDuration * 0.4);
-    cumulativeOffset += prevDuration - effectiveTransition;
-    const transitions = ["fade", "dissolve", "smoothleft", "circlecrop", "fadeblack"];
-    const transition = transitions[i % transitions.length];
-    const outLabel = i < clipPaths.length - 1 ? `xf${i}` : "outv";
-    xfadeChain.push(
-      `[${lastLabel}][v${i}]xfade=transition=${transition}:duration=${effectiveTransition.toFixed(2)}:offset=${cumulativeOffset.toFixed(2)}[${outLabel}]`
+  const normDir = path.join(path.dirname(outputPath), `norm-${Date.now()}`);
+  fs.mkdirSync(normDir, { recursive: true });
+  const normPaths: string[] = [];
+  for (let i = 0; i < clipPaths.length; i++) {
+    const np = path.join(normDir, `n${i}.mp4`);
+    await runFfmpeg(
+      `ffmpeg -y -i "${clipPaths[i]}" -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p" -c:v libx264 -preset veryfast -crf 20 -an "${np}"`,
+      180000,
+      `normalise clip ${i + 1}`
     );
-    lastLabel = outLabel;
+    normPaths.push(np);
+    durations[i] = await probeClipDuration(np);
   }
 
-  const fullVideoFilter = filterParts.join(";") + ";" + xfadeChain.join(";");
+  const videoOnlyPath = hasNarration ? outputPath.replace(".mp4", "-videoonly.mp4") : outputPath;
+  console.log(`[VideoGen] Joining ${normPaths.length} clips${hasNarration ? " (narration added after)" : ""}...`);
+  try {
+    await joinWithTransitions(normPaths, durations, transitionDuration, videoOnlyPath);
+  } catch (err: any) {
+    // Fall back to a straight join (no fades) so the family still gets their movie.
+    console.warn(`[VideoGen] Fades failed, joining clips without transitions: ${err.message}`);
+    const listPath = path.join(normDir, "list.txt");
+    fs.writeFileSync(listPath, normPaths.map((p) => `file '${p}'`).join("\n"));
+    await runFfmpeg(
+      `ffmpeg -y -f concat -safe 0 -i "${listPath}" -c copy -movflags +faststart "${videoOnlyPath}"`,
+      120000,
+      "join clips"
+    );
+  } finally {
+    // keep normDir until the end of this function for the narration step
+  }
+  const cleanupNorm = () => { try { fs.rmSync(normDir, { recursive: true, force: true }); } catch {} };
 
   if (!hasNarration) {
-    const cmd = `ffmpeg -y ${inputs} -filter_complex "${fullVideoFilter}" -map "[outv]" -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p -movflags +faststart -an "${outputPath}" 2>&1`;
-    console.log("[VideoGen] Stitching AI video clips with cinematic transitions (no narration)...");
-    try {
-      await execAsync(cmd, { timeout: 180000 });
-    } catch (error: any) {
-      console.error("FFmpeg stitch error:", error.stderr?.substring(0, 1000) || error.message);
-      throw new Error("Video stitching failed");
-    }
+    cleanupNorm();
     return;
-  }
-
-  console.log("[VideoGen] Stitching video with narration audio...");
-
-  const videoOnlyPath = outputPath.replace(".mp4", "-videoonly.mp4");
-  const videoCmd = `ffmpeg -y ${inputs} -filter_complex "${fullVideoFilter}" -map "[outv]" -c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p -movflags +faststart -an "${videoOnlyPath}" 2>&1`;
-
-  try {
-    await execAsync(videoCmd, { timeout: 180000 });
-  } catch (error: any) {
-    console.error("FFmpeg video stitch error:", error.stderr?.substring(0, 1000) || error.message);
-    throw new Error("Video stitching failed");
   }
 
   const validNarrations = narrationPaths!.filter(p => p !== "");
@@ -219,6 +244,7 @@ async function stitchClipsWithTransitions(
     const silencePath = path.join(path.dirname(outputPath), `silence-${Date.now()}.wav`);
 
     let concatContent = "";
+    const gapFiles: string[] = [];
     let accumulatedVideoTime = 0;
     let accumulatedAudioTime = 0;
 
@@ -232,6 +258,7 @@ async function stitchClipsWithTransitions(
           const gapSilencePath = path.join(path.dirname(outputPath), `gap-silence-${i}-${Date.now()}.wav`);
           await execAsync(`ffmpeg -y -f lavfi -i anullsrc=r=44100:cl=mono -t ${gap.toFixed(2)} "${gapSilencePath}" 2>&1`, { timeout: 10000 });
           concatContent += `file '${gapSilencePath}'\n`;
+          gapFiles.push(gapSilencePath);
           accumulatedAudioTime += gap;
         }
 
@@ -252,14 +279,18 @@ async function stitchClipsWithTransitions(
       console.error("[VideoGen] Narration concat failed:", err.message);
       fs.renameSync(videoOnlyPath, outputPath);
       try { fs.unlinkSync(concatListPath); } catch {}
+      cleanupNorm();
       return;
     }
     try { fs.unlinkSync(concatListPath); } catch {}
     try { fs.unlinkSync(silencePath); } catch {}
+    for (const g of gapFiles) { try { fs.unlinkSync(g); } catch {} }
   }
 
   try {
-    const mergeCmd = `ffmpeg -y -i "${videoOnlyPath}" -i "${narrationConcatPath}" -c:v copy -c:a aac -b:a 128k -shortest -movflags +faststart "${outputPath}" 2>&1`;
+    // Pad the narration with silence so the movie keeps its full length (the
+    // pictures decide how long it runs, not the narration).
+    const mergeCmd = `ffmpeg -y -i "${videoOnlyPath}" -i "${narrationConcatPath}" -filter_complex "[1:a]apad[a]" -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 128k -shortest -movflags +faststart "${outputPath}" 2>&1`;
     await execAsync(mergeCmd, { timeout: 60000 });
     console.log("[VideoGen] Narration audio merged into video successfully");
   } catch (err: any) {
@@ -269,6 +300,7 @@ async function stitchClipsWithTransitions(
 
   try { fs.unlinkSync(videoOnlyPath); } catch {}
   try { fs.unlinkSync(narrationConcatPath); } catch {}
+  cleanupNorm();
 }
 
 export async function generateVideoFromScenes(
