@@ -311,6 +311,11 @@ Respond in JSON:
             content: `You break personal stories into exactly ${sceneCount} key visual scenes. Spread the story evenly across all ${sceneCount} scenes.
 
 For each scene, output a short caption (10 words max) and a detailed visual description (2-3 sentences).
+Each description must be a CANDID moment from a storybook, like a still from a film:
+- the storyteller is DOING something and absorbed in it (hammering, racing, laughing, crashing) - never posing, never looking at the camera
+- name the storyteller's EMOTION and facial expression in that moment (gritted-teeth concentration, wide-eyed thrill, shock, helpless laughter, pride)
+- vary the camera: wide shot, low angle, over-the-shoulder, close-up, side-on action shot - not the same framing twice in a row
+Also describe, ONCE, every object or place that appears in more than one scene (e.g. the billycart, the family car, the dog, the house), in precise visual detail: shape, colour, material, wheels, markings. Then use that exact same description wherever it appears.
 
 ${contentRating === "G" ? "Make ALL descriptions fully family-friendly. No violence, gore, injuries, or danger." : ""}
 ${contentRating === "PG" ? "Keep dramatic tension but soften graphic violence." : ""}
@@ -333,21 +338,28 @@ RULES:
 6. Only TWO characters maximum per scene when possible. Avoid extra background figures.
 
 Respond in valid JSON format ONLY:
-[
-  ${Array.from({ length: sceneCount }, () => '{"caption": "...", "description": "..."}').join(",\n  ")}
-]`
+{
+  "recurring": "precise description of each object/place that appears in more than one scene, or empty string",
+  "scenes": [
+  ${Array.from({ length: sceneCount }, () => '{"caption": "...", "description": "...", "emotion": "...", "camera": "..."}').join(",\n  ")}
+  ]
+}`
           },
           { role: "user", content: storyText }
         ],
         max_completion_tokens: sceneCount <= 4 ? 8000 : 12000,
       });
 
-      let scenes: { caption: string; description: string }[] = [];
+      let scenes: { caption: string; description: string; emotion?: string; camera?: string }[] = [];
+      let recurringObjects = "";
       try {
         const rawContent = sceneSplitResponse.choices[0]?.message?.content || "[]";
         const parsed = parseAiJson(rawContent);
-        if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("Invalid scenes");
-        scenes = parsed;
+        const list = Array.isArray(parsed) ? parsed : parsed?.scenes;
+        if (!Array.isArray(list) || list.length === 0) throw new Error("Invalid scenes");
+        scenes = list;
+        if (!Array.isArray(parsed) && typeof parsed?.recurring === "string") recurringObjects = parsed.recurring.trim();
+        if (recurringObjects) console.log(`[Illustrations] Recurring objects: ${recurringObjects.slice(0, 300)}`);
         console.log(`[Illustrations] Requested ${sceneCount} scenes, AI generated ${scenes.length} scenes`);
       } catch (parseErr) {
         console.error(`[Illustrations] Failed to parse scene JSON, using fallback for ${sceneCount} scenes:`, (parseErr as Error).message, "| finish_reason:", sceneSplitResponse.choices[0]?.finish_reason);
@@ -381,7 +393,7 @@ Respond in valid JSON format ONLY:
       let ageTransformedRefPath: string | null = null;
 
       if (storytellerIsChild && profilePhotoPath && fs.existsSync(profilePhotoPath)) {
-        const ageTransformPrompt = `This is a photo of a real person. Generate a portrait of this SAME person but as a ${storytellerAge || "young teenager"}. Keep their EXACT same face — same eyes, same nose, same face shape, same skin tone, same ethnicity. Just make them younger: smooth skin, no wrinkles, full thick ${storytellerDesc.includes("dark") ? "dark" : "natural-colored"} hair, youthful features. Same person, just younger. Head and shoulders portrait, neutral background.`;
+        const ageTransformPrompt = `This is a photo of a real person. Generate a portrait of this SAME person but as a ${storytellerAge || "young teenager"}. Keep their EXACT same face — same eyes, same nose, same face shape, same skin tone, same ethnicity. Just make them younger: smooth skin, no wrinkles, full thick ${storytellerDesc.includes("dark") ? "dark" : "natural-colored"} hair, youthful features. Same person, just younger. Head and shoulders, three-quarter view, natural relaxed expression, looking slightly away from the camera, neutral background.`;
         console.log(`[Child story] Step 0: Generating age-transformed portrait (${storytellerAge})...`);
         try {
           const ageTransformBuf = await generateImageWithReference(profilePhotoPath, ageTransformPrompt, "1024x1024");
@@ -397,13 +409,25 @@ Respond in valid JSON format ONLY:
 
       const effectiveRefPath = ageTransformedRefPath || profilePhotoPath;
 
+      // Direction added to every picture: candid action, real emotion, varied
+      // framing, identical recurring objects. The reference image is for the
+      // FACE and OUTFIT only - copying its pose made every picture a stiff portrait.
+      const sceneDirection = (sc: { emotion?: string; camera?: string }) =>
+        [
+          `CANDID MOMENT, like a still from a family film: the storyteller is caught mid-action and absorbed in what is happening - NOT posing, NOT looking at the camera, NOT smiling for a photo.`,
+          sc.emotion ? `Their expression clearly shows: ${sc.emotion}.` : `Their face shows a clear, natural emotion that fits the moment.`,
+          sc.camera ? `Camera: ${sc.camera}.` : "",
+          `Use the reference image ONLY for the person's face, hair and outfit - do NOT copy its pose, framing, expression or camera angle.`,
+          recurringObjects ? `These objects must look EXACTLY like this in every picture they appear in: ${recurringObjects}` : "",
+        ].filter(Boolean).join(" ");
+
       if (effectiveRefPath && fs.existsSync(effectiveRefPath)) {
         const scene0 = scenes[0];
         const charGuide = storytellerIsChild
           ? `The reference image shows the storyteller [STORYTELLER] at ${storytellerAge}. Draw them EXACTLY as they appear in the reference — same face, same hair, same build. Outfit: ${storytellerOutfit}. They are the STAR — the largest, most prominent figure. Any adult (parent, etc.) is a DIFFERENT person who must NOT resemble the reference.`
           : `THE STORYTELLER [STORYTELLER]: ${storytellerDesc}. Age: ${storytellerAge}. Outfit: ${storytellerOutfit}. Apply the reference photo to THIS character. They are the STAR — make them the focal point.`;
         const childNote = storytellerIsChild ? `The storyteller is ${storytellerAge} — draw them as a child/teen exactly matching the reference portrait. ` : "";
-        const prompt0 = `Illustrate this personal memory scene: "${scene0.description}". ${charGuide} ${childNote}${appearanceInstruction}${styleInstruction} No text or words in the image. Make it warm, emotional, and nostalgic.`;
+        const prompt0 = `Illustrate this personal memory scene: "${scene0.description}". ${sceneDirection(scene0)} ${charGuide} ${childNote}${appearanceInstruction}${styleInstruction} No text or words in the image. Make it warm, emotional, and nostalgic.`;
 
         try {
           const buf0 = await generateImageWithReference(effectiveRefPath, prompt0, "1024x1024");
@@ -438,12 +462,16 @@ Respond in valid JSON format ONLY:
         const sceneCharGuide = storytellerIsChild
           ? `The reference image shows the storyteller [STORYTELLER] as a child/teen. Match them EXACTLY — same face, same hair, same body size, same outfit (${storytellerOutfit}). Age: ${storytellerAge}. They must look identical across all scenes. Any adults are DIFFERENT people.`
           : `THE STORYTELLER [STORYTELLER]: ${storytellerDesc}. Age: ${storytellerAge}. Outfit: ${storytellerOutfit}. Must look IDENTICAL to the person in the reference image. They are the STAR.`;
-        const prompt = `Illustrate this personal memory scene: "${scene.description}". ${sceneCharGuide} ${appearanceInstruction}${styleInstruction} No text or words in the image. Make it warm, emotional, and nostalgic.`;
+        const prompt = `Illustrate this personal memory scene: "${scene.description}". ${sceneDirection(scene)} ${sceneCharGuide} ${appearanceInstruction}${styleInstruction} No text or words in the image. Make it warm, emotional, and nostalgic.`;
 
         let imageBuffer: Buffer;
         if (consistencyRefPath && fs.existsSync(consistencyRefPath)) {
           try {
-            imageBuffer = await generateImageWithReference(consistencyRefPath, prompt, "1024x1024");
+            // Face from the portrait, outfit/objects/style from page 1 - so pages
+            // don't all inherit page 1's pose.
+            imageBuffer = effectiveRefPath && fs.existsSync(effectiveRefPath)
+              ? await generateImageWithReference(effectiveRefPath, prompt, "1024x1024", consistencyRefPath)
+              : await generateImageWithReference(consistencyRefPath, prompt, "1024x1024");
           } catch {
             imageBuffer = await generateImageBuffer(prompt, "1024x1024");
           }
@@ -880,7 +908,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
           let videoAgeTransformedRefPath: string | null = null;
 
           if (vidStorytellerIsChild && hasReferencePhoto) {
-            const vidAgePrompt = `This is a photo of a real person. Generate a portrait of this SAME person but as a ${vidStorytellerAge || "young teenager"}. Keep their EXACT same face — same eyes, same nose, same face shape, same skin tone, same ethnicity. Just make them younger: smooth skin, no wrinkles, full thick hair, youthful features. Same person, just younger. Head and shoulders portrait, neutral background.`;
+            const vidAgePrompt = `This is a photo of a real person. Generate a portrait of this SAME person but as a ${vidStorytellerAge || "young teenager"}. Keep their EXACT same face — same eyes, same nose, same face shape, same skin tone, same ethnicity. Just make them younger: smooth skin, no wrinkles, full thick hair, youthful features. Same person, just younger. Head and shoulders, three-quarter view, natural relaxed expression, looking slightly away from the camera, neutral background.`;
             console.log(`[Child video] Step 0: Generating age-transformed portrait (${vidStorytellerAge})...`);
             try {
               const vidAgeBuf = await generateImageWithReference(videoProfilePhotoPath!, vidAgePrompt, "1024x1024");
