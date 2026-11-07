@@ -407,7 +407,6 @@ export default function StoryDetail() {
       setIllustrationJobId(data.jobId);
       setIllustrationStartedAt(Date.now());
       setIllustrationProgress({ completed: 0, total: data.totalScenes || sceneCount });
-      toast({ title: "Creating your story illustrations...", description: `AI is generating ${data.totalScenes || sceneCount} scenes from your story. This takes about a minute.` });
     },
     onError: () => {
       toast({ title: "Generation failed", description: "Please try again in a moment.", variant: "destructive" });
@@ -460,13 +459,7 @@ export default function StoryDetail() {
       setVideoDialogOpen(false);
       setPollingVideoId(data.id);
       setVideoStartedAt(Date.now());
-      const hasNarration = enableNarration && profileHasVoice;
-      toast({
-        title: "We're bringing your memories to life 🎬",
-        description: hasNarration
-          ? "We're bringing your memories to life, with narration. This takes about 5–10 minutes."
-          : "We're bringing your memories to life. This takes about 5–10 minutes.",
-      });
+      // The progress banner on the page explains what is happening - no extra pop-up.
     },
     onError: () => {
       toast({ title: "Generation failed", description: "Please try again in a moment.", variant: "destructive" });
