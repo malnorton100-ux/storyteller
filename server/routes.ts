@@ -2075,6 +2075,9 @@ html, body {
   display: block;
   object-fit: contain;
 }
+/* Frame hugs the picture - no white strip beside a height-limited picture. */
+.illustration-page .illustration-image-wrapper { width: auto; max-width: 150mm; display: inline-block; line-height: 0; }
+.illustration-page .illustration-image-wrapper img { width: auto !important; max-width: 150mm; }
 .illustration-caption {
   margin-top: 16px;
   font-size: 15px;
@@ -2158,8 +2161,13 @@ html, body {
       // --- Cover Page ---
       pageNum++;
       html += `<div class="page cover-page">`;
-      if (story.coverImageUrl) {
-        html += `<div class="cover-image-wrapper"><img src="${imageToBase64(story.coverImageUrl)}" alt="Cover"></div>`;
+      // Cover: a picture from the action (about 60% through the story) so the
+      // book doesn't open on the same picture twice.
+      const coverUrl = illustrationsList.length >= 3
+        ? illustrationsList[Math.min(illustrationsList.length - 1, Math.floor(illustrationsList.length * 0.6))].imageUrl
+        : story.coverImageUrl;
+      if (coverUrl) {
+        html += `<div class="cover-image-wrapper"><img src="${imageToBase64(coverUrl)}" alt="Cover"></div>`;
       }
       html += `<div class="cover-ornament"></div>`;
       html += `<div class="cover-title">${story.title}</div>`;
