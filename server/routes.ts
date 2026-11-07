@@ -67,6 +67,15 @@ async function generateCoverForStory(storyId: number, title: string, content: st
   console.log(`Cover generated for story ${storyId}: ${coverUrl}`);
 }
 
+/** A movie that takes longer than this is marked failed (and the user emailed) instead of spinning forever. */
+const MOVIE_TIME_LIMIT_MS = Number(process.env.MOVIE_TIME_LIMIT_MINUTES || 25) * 60 * 1000;
+function withTimeLimit<T>(work: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Movie took longer than ${Math.round(ms / 60000)} minutes - stopped`)), ms);
+    work.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -800,11 +809,9 @@ Return ONLY a JSON array of ${storybook.length} objects: [{"caption": "...", "ac
               cancelledVideoIds.delete(video.id);
               return;
             }
-            const reusedUrl = await generateVideoFromScenes(
-              reusedImages,
-              `story-${storyId}-${video.id}-${Date.now()}.mp4`,
-              story.title,
-              narrationFor()
+            const reusedUrl = await withTimeLimit(
+              generateVideoFromScenes(reusedImages, `story-${storyId}-${video.id}-${Date.now()}.mp4`, story.title, narrationFor()),
+              MOVIE_TIME_LIMIT_MS
             );
             await storage.updateStoryVideo(video.id, { storyId, style, status: "complete", videoUrl: reusedUrl, scenes: reusedScenes });
             await notify(true);
@@ -1027,7 +1034,10 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
 
           const narrationConfig = narrationFor();
 
-          const videoUrl = await generateVideoFromScenes(validSceneImages, videoFilename, story.title, narrationConfig);
+          const videoUrl = await withTimeLimit(
+            generateVideoFromScenes(validSceneImages, videoFilename, story.title, narrationConfig),
+            MOVIE_TIME_LIMIT_MS
+          );
 
           await storage.updateStoryVideo(video.id, {
             storyId,

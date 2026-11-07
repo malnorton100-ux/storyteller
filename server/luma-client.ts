@@ -125,7 +125,7 @@ export async function animateImageToVideo(
   console.log(`[Replicate] Prediction created: ${prediction.id}, waiting for AI video...`);
 
   let attempts = 0;
-  const maxAttempts = 200;
+  const maxAttempts = 160; // ~8 minutes per clip, then give up on that clip
 
   while (attempts < maxAttempts) {
     const updated = await client.predictions.get(prediction.id);
