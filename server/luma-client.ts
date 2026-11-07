@@ -165,41 +165,70 @@ export async function animateImageToVideo(
   throw new Error("Replicate video generation timed out after 10 minutes");
 }
 
+/**
+ * Download a finished clip. Each attempt gives up if the connection goes quiet
+ * for 45s or takes more than 3 minutes in total (a stalled download used to hang
+ * the whole movie forever), and is retried up to 3 times.
+ */
 export async function downloadVideo(url: string, outputPath: string): Promise<void> {
+  let lastErr: any;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await downloadOnce(url, outputPath);
+      const size = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : 0;
+      if (size < 1000) throw new Error(`Downloaded clip is too small (${size} bytes)`);
+      return;
+    } catch (err: any) {
+      lastErr = err;
+      console.warn(`[Replicate] Clip download attempt ${attempt} failed: ${err?.message}`);
+      try { fs.unlinkSync(outputPath); } catch {}
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 3000 * attempt));
+    }
+  }
+  throw lastErr;
+}
+
+function downloadOnce(url: string, outputPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const dir = path.dirname(outputPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    const file = fs.createWriteStream(outputPath);
+    let done = false;
+    const finish = (err?: Error) => {
+      if (done) return;
+      done = true;
+      clearTimeout(overall);
+      if (err) reject(err);
+      else resolve();
+    };
+    let currentReq: any = null;
+    const overall = setTimeout(() => {
+      currentReq?.destroy(new Error("Download took longer than 3 minutes"));
+      finish(new Error("Download took longer than 3 minutes"));
+    }, 3 * 60 * 1000);
 
     const makeRequest = (reqUrl: string, redirectCount = 0) => {
-      if (redirectCount > 10) {
-        reject(new Error("Too many redirects"));
-        return;
-      }
+      if (redirectCount > 10) return finish(new Error("Too many redirects"));
       const protocol = reqUrl.startsWith("https") ? https : http;
-      protocol.get(reqUrl, (response) => {
+      const req = protocol.get(reqUrl, (response) => {
         if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          makeRequest(response.headers.location, redirectCount + 1);
+          response.resume();
+          makeRequest(new URL(response.headers.location, reqUrl).toString(), redirectCount + 1);
           return;
         }
-
         if (response.statusCode !== 200) {
-          reject(new Error(`Failed to download video: HTTP ${response.statusCode}`));
-          return;
+          response.resume();
+          return finish(new Error(`Failed to download video: HTTP ${response.statusCode}`));
         }
-
+        const file = fs.createWriteStream(outputPath);
+        response.on("error", (e) => finish(e));
+        file.on("error", (e) => finish(e));
+        file.on("finish", () => file.close(() => finish()));
         response.pipe(file);
-        file.on("finish", () => {
-          file.close();
-          resolve();
-        });
-      }).on("error", (err) => {
-        fs.unlink(outputPath, () => {});
-        reject(err);
       });
+      currentReq = req;
+      req.setTimeout(45000, () => req.destroy(new Error("Download stalled (no data for 45s)")));
+      req.on("error", (err) => finish(err));
     };
 
     makeRequest(url);
