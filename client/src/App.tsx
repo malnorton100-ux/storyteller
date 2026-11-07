@@ -2,6 +2,9 @@ import { Switch, Route, useLocation } from "wouter";
 import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import AuthPage from "@/pages/auth-page";
+import Welcome, { ONBOARDING_SKIP_KEY } from "@/pages/welcome";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -46,6 +49,13 @@ const sidebarStyle = {
 function Shell() {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
+  const [skipped, setSkipped] = useState(() => {
+    try { return !!localStorage.getItem(ONBOARDING_SKIP_KEY); } catch { return false; }
+  });
+  const { data: profiles, isLoading: profilesLoading } = useQuery<any[]>({
+    queryKey: ["/api/storyteller-profiles"],
+    enabled: !!user,
+  });
 
   // Shared/gifted storybooks are public - family can open them without an account.
   if (location.startsWith("/shared/")) {
@@ -67,6 +77,27 @@ function Shell() {
   }
 
   if (!user) return <div className="h-screen overflow-y-auto"><AuthPage /></div>;
+
+  // Brand-new users (no photo yet) get the guided 3-step start.
+  if (profilesLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+  if (!skipped && Array.isArray(profiles) && profiles.length === 0) {
+    return (
+      <div className="h-screen overflow-y-auto">
+        <Welcome
+          onSkip={() => {
+            try { localStorage.setItem(ONBOARDING_SKIP_KEY, "skipped"); } catch {}
+            setSkipped(true);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
           <SidebarProvider style={sidebarStyle as React.CSSProperties}>
