@@ -39,9 +39,12 @@ export function WorkingBanner({ title, stepLabel, done, total, startedAt, usualM
   }, []);
 
   const safeTotal = Math.max(total, done, 1);
-  // Never show 0% (looks stuck) or 100% (not finished yet).
-  const pct = Math.min(95, Math.max(5, Math.round((done / safeTotal) * 100)));
   const elapsed = now - startedAt;
+  // total = 0 means "no step count": the bar follows the usual time instead.
+  const byTime = total === 0;
+  const fraction = byTime ? elapsed / (usualMinutes * 60 * 1000) : done / safeTotal;
+  // Never show 0% (looks stuck) or 100% (not finished yet).
+  const pct = Math.min(95, Math.max(5, Math.round(fraction * 100)));
   const overTime = elapsed > usualMinutes * 60 * 1000 * 1.5;
   const rotating = messages && messages.length > 0 ? messages[Math.floor(elapsed / 8000) % messages.length] : null;
 
@@ -59,7 +62,12 @@ export function WorkingBanner({ title, stepLabel, done, total, startedAt, usualM
         <div className="min-w-0 flex-1">
           <p className="text-xl font-bold leading-tight">{title}…</p>
           <p className="text-base text-foreground/80 mt-1">
-            {stepLabel}: <span className="font-semibold">{Math.min(done + 1, safeTotal)} of {safeTotal}</span>
+            {stepLabel}
+            {!byTime && (
+              <>
+                : <span className="font-semibold">{Math.min(done + 1, safeTotal)} of {safeTotal}</span>
+              </>
+            )}
           </p>
         </div>
       </div>

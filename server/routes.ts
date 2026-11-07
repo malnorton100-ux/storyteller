@@ -5,6 +5,7 @@ import { insertStorySchema } from "@shared/schema";
 import { openai, ensureCompatibleFormat, speechToText, textToSpeech } from "./replit_integrations/audio/client";
 import { generateImageBuffer, generateImageWithReference } from "./replit_integrations/image/client";
 import { generateVideoFromScenes, cleanUpVideoLeftovers } from "./video-generator";
+import { sendEmail, movieReadyEmail, movieFailedEmail } from "./email";
 import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma-client";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { userId, userOwnsStory, isOwner } from "./auth";
@@ -71,6 +72,9 @@ export async function registerRoutes(
 ): Promise<Server> {
   app.use(express.json({ limit: "50mb" }));
   try { cleanUpVideoLeftovers(); } catch (e) { console.warn("[VideoGen] Cleanup skipped:", (e as Error).message); }
+  storage.failInterruptedVideos()
+    .then((n) => { if (n) console.log(`[VideoGen] Marked ${n} interrupted movie(s) as failed so they can be retried`); })
+    .catch((e) => console.warn("[VideoGen] Could not check for interrupted movies:", e?.message));
 
   app.get("/api/stories", async (req, res) => {
     try {
@@ -682,6 +686,77 @@ Respond in valid JSON format ONLY:
 
           const videoStoryText = story.content.substring(0, 1500);
 
+          // Email the storyteller when the movie is done (they may have left the app).
+          const owner = story.userId ? await storage.getUser(story.userId) : undefined;
+          const notify = async (ok: boolean) => {
+            if (!owner?.username) return;
+            const mail = ok ? movieReadyEmail(owner.name, story.title, storyId) : movieFailedEmail(owner.name, story.title, storyId);
+            await sendEmail(owner.username, mail.subject, mail.html);
+          };
+
+          const narrationFor = () => {
+            if (!(enableNarration && videoProfile)) return undefined;
+            const voice = videoProfile.voicePreference as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" | null;
+            if (!voice) return undefined;
+            console.log(`[VideoGen] Narration enabled with voice: ${voice}`);
+            return { enabled: true, voice, voiceSampleUrl: videoProfile.voiceSampleUrl || null };
+          };
+
+          // FAST PATH: reuse the storybook pictures already made for this story
+          // (same style) instead of painting a new set - quicker, cheaper, and the
+          // book and the movie match.
+          const storybook = (await storage.getIllustrations(storyId))
+            .filter((ill) => ill.style === style && ill.imageUrl && fs.existsSync(path.join(PUBLIC_DATA_DIR, ill.imageUrl)))
+            .sort((a, b) => (a.sceneOrder ?? 0) - (b.sceneOrder ?? 0))
+            .slice(0, 6);
+          if (storybook.length >= 2) {
+            console.log(`[VideoGen] Reusing ${storybook.length} storybook pictures for the movie`);
+            let lines: { caption: string; action: string }[] = [];
+            try {
+              const linesResp = await openai.chat.completions.create({
+                model: TEXT_MODEL,
+                messages: [
+                  {
+                    role: "system",
+                    content: `You write narration for a short family movie made from a personal story. The movie has ${storybook.length} scenes, one per picture, in order. For EACH scene write:
+- "caption": what the storyteller says over that scene, in first person, warm and natural: ONE or TWO short sentences, 25 words maximum, so it can be read in about 8 seconds
+- "action": one sentence describing the natural movement happening in that picture (for animating it), moving forwards
+Return ONLY a JSON array of ${storybook.length} objects: [{"caption": "...", "action": "..."}]`,
+                  },
+                  {
+                    role: "user",
+                    content: `Story:\n${videoStoryText}\n\nScenes:\n${storybook.map((ill, i) => `${i + 1}. ${ill.customText || ill.sceneCaption || ""} | ${ill.prompt.slice(0, 300)}`).join("\n")}`,
+                  },
+                ],
+                max_completion_tokens: 6000,
+              });
+              const parsed = parseAiJson(linesResp.choices[0]?.message?.content);
+              if (Array.isArray(parsed)) lines = parsed;
+            } catch (e: any) {
+              console.warn("[VideoGen] Narration lines failed, using picture captions:", e?.message);
+            }
+            const reusedImages = storybook.map((ill, i) => ({
+              imagePath: path.join(PUBLIC_DATA_DIR, ill.imageUrl),
+              caption: lines[i]?.caption || ill.customText || ill.sceneCaption || story.title,
+              action: lines[i]?.action || ill.prompt.slice(0, 400),
+            }));
+            const reusedScenes = storybook.map((ill, i) => ({ imageUrl: ill.imageUrl, caption: reusedImages[i].caption }));
+            await storage.updateStoryVideo(video.id, { storyId, style, status: "generating", scenes: reusedScenes });
+            if (cancelledVideoIds.has(video.id)) {
+              cancelledVideoIds.delete(video.id);
+              return;
+            }
+            const reusedUrl = await generateVideoFromScenes(
+              reusedImages,
+              `story-${storyId}-${video.id}-${Date.now()}.mp4`,
+              story.title,
+              narrationFor()
+            );
+            await storage.updateStoryVideo(video.id, { storyId, style, status: "complete", videoUrl: reusedUrl, scenes: reusedScenes });
+            await notify(true);
+            return;
+          }
+
           const videoCharAnalysis = await openai.chat.completions.create({
             model: TEXT_MODEL,
             messages: [
@@ -896,18 +971,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
           console.log(`All ${validSceneImages.length} video scenes generated, creating video...`);
           const videoFilename = `story-${storyId}-${video.id}-${Date.now()}.mp4`;
 
-          let narrationConfig = undefined;
-          if (enableNarration && videoProfile) {
-            const voice = videoProfile.voicePreference as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" | null;
-            if (voice) {
-              narrationConfig = {
-                enabled: true,
-                voice,
-                voiceSampleUrl: videoProfile.voiceSampleUrl || null,
-              };
-              console.log(`[VideoGen] Narration enabled with voice: ${voice}`);
-            }
-          }
+          const narrationConfig = narrationFor();
 
           const videoUrl = await generateVideoFromScenes(validSceneImages, videoFilename, story.title, narrationConfig);
 
@@ -918,6 +982,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
             videoUrl,
             scenes: validScenes,
           });
+          await notify(true);
         } catch (err: any) {
           const errorMessage = err?.message || "Unknown error";
           console.error("Video generation failed:", errorMessage);
@@ -927,6 +992,15 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
             status: "failed",
             scenes: [],
           });
+          if (!/cancelled/i.test(errorMessage)) {
+            try {
+              const owner = story.userId ? await storage.getUser(story.userId) : undefined;
+              if (owner?.username) {
+                const mail = movieFailedEmail(owner.name, story.title, storyId);
+                await sendEmail(owner.username, mail.subject, mail.html);
+              }
+            } catch {}
+          }
         }
       })();
     } catch (error) {
@@ -970,7 +1044,8 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
       if (video) {
         const files = [video.videoUrl, ...((video.scenes as any[]) || []).map((s) => s?.imageUrl)].filter(Boolean) as string[];
         for (const url of files) {
-          if (!/^\/(videos|images\/illustrations)\//.test(url)) continue;
+          // Only files made for this movie - never storybook pictures it reused.
+          if (!/^\/(videos\/|images\/illustrations\/video-)/.test(url)) continue;
           const filePath = path.join(PUBLIC_DATA_DIR, url);
           if (filePath.startsWith(PUBLIC_DATA_DIR)) { try { fs.unlinkSync(filePath); } catch {} }
         }
