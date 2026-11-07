@@ -31,6 +31,7 @@ export function hasPublicUrl(): boolean {
 
 /** OpenAI settings: a normal OPENAI_API_KEY, or Replit's AI integration when running there. */
 export const openaiConfig = {
-  apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  // Placeholder lets the app start before a key is added; AI features will error until then.
+  apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "missing-openai-key",
   baseURL: process.env.OPENAI_API_KEY ? undefined : process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
 };
