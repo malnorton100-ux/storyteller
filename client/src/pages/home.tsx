@@ -30,11 +30,12 @@ export default function Home() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="relative w-full h-80 md:h-96 lg:h-[28rem]">
+      <div className="relative w-full h-80 md:h-96 lg:h-[28rem] bg-gradient-to-br from-amber-700 via-orange-800 to-stone-900">
         <img
           src={heroImg}
-          alt="Storytelling"
+          alt=""
           className="w-full h-full object-cover"
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/20" />
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 pt-8">
