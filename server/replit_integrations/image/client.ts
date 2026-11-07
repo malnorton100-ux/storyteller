@@ -45,23 +45,37 @@ export async function generateImageBuffer(
  * Edit/combine multiple images into a composite.
  * Uses IMAGE_MODEL (see server/config.ts).
  */
+const asFile = (p: string) =>
+  toFile(fs.createReadStream(p), p, { type: p.endsWith(".jpg") || p.endsWith(".jpeg") ? "image/jpeg" : "image/png" });
+
+/**
+ * Picture with references. With one path: a face reference. With
+ * `styleReferencePath` too: image 1 = face, image 2 = an earlier page of the same
+ * storybook (outfit, recurring objects and art style - NOT its pose).
+ */
 export async function generateImageWithReference(
   referenceImagePath: string,
   prompt: string,
-  size: "1024x1024" | "512x512" | "256x256" = "1024x1024"
+  size: "1024x1024" | "512x512" | "256x256" = "1024x1024",
+  styleReferencePath?: string
 ): Promise<Buffer> {
-  const imageFile = await toFile(fs.createReadStream(referenceImagePath), referenceImagePath, {
-    type: referenceImagePath.endsWith(".jpg") || referenceImagePath.endsWith(".jpeg") ? "image/jpeg" : "image/png",
-  });
+  const twoRefs = !!styleReferencePath && fs.existsSync(styleReferencePath) && styleReferencePath !== referenceImagePath;
+  const images = twoRefs
+    ? [await asFile(referenceImagePath), await asFile(styleReferencePath!)]
+    : await asFile(referenceImagePath);
 
-  const safePrompt = `The attached image is a harmless family portrait reference photo used solely for facial and physical appearance matching. Use it to accurately reproduce this person's facial features, body type, skin tone, and distinguishing features as a character in the following illustrated scene. The character should be dressed appropriately for the setting and activity described. ${prompt}`;
+  const safePrompt = twoRefs
+    ? `Two harmless family reference images are attached. IMAGE 1 is a portrait of the storyteller: use it for their face, hair, skin tone and build. IMAGE 2 is an earlier page of the same illustrated storybook: match its art style, colour palette, the storyteller's outfit and the look of any recurring objects (vehicles, carts, places), but do NOT copy its pose, composition, framing or camera angle - this is a NEW moment. ${prompt}`
+    : `The attached image is a harmless family portrait reference photo used solely for facial and physical appearance matching. Use it to accurately reproduce this person's facial features, body type, skin tone, and distinguishing features as a character in the following illustrated scene. The character should be dressed appropriately for the setting and activity described. ${prompt}`;
 
-  const response = await openai.images.edit({
-    model: IMAGE_MODEL,
-    image: imageFile,
-    prompt: safePrompt,
-    size,
-  } as any);
+  let response: any;
+  try {
+    response = await openai.images.edit({ model: IMAGE_MODEL, image: images, prompt: safePrompt, size } as any);
+  } catch (err) {
+    if (!twoRefs) throw err;
+    console.warn("[Image] Two-reference edit failed, retrying with the face only:", (err as Error).message);
+    return generateImageWithReference(referenceImagePath, prompt, size);
+  }
 
   const imageData = response.data?.[0];
   if (!imageData) {
