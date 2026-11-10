@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Mic, MicOff, Save, Loader2, Sparkles, Wand2, Square, ShieldCheck, ArrowLeft } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { StoryHelper } from "@/components/story-helper";
 
 const ERAS = ["1940s", "1950s", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s"];
 const CATEGORIES = ["Childhood", "Family", "Love", "Work", "Travel", "Holidays", "Friendship", "Life Lessons", "Cooking", "Other"];
@@ -120,16 +121,6 @@ export default function RecordStory() {
     },
   });
 
-  const enhanceMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/enhance-story", { content });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setContent(data.enhanced);
-      toast({ title: "Story polished!" });
-    },
-  });
 
   const suggestTitleMutation = useMutation({
     mutationFn: async () => {
@@ -269,23 +260,8 @@ export default function RecordStory() {
                 />
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-xs text-muted-foreground">{content.length} characters</span>
-                  {content.trim().length > 50 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => enhanceMutation.mutate()}
-                      disabled={enhanceMutation.isPending}
-                      data-testid="button-enhance"
-                    >
-                      {enhanceMutation.isPending ? (
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                      ) : (
-                        <Sparkles className="mr-1 h-3 w-3" />
-                      )}
-                      Polish my story
-                    </Button>
-                  )}
                 </div>
+                <StoryHelper content={content} era={era || undefined} category={category || undefined} onUse={setContent} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
