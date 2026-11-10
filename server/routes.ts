@@ -635,6 +635,123 @@ Respond in valid JSON format ONLY:
     }
   });
 
+  // ── Story Helper ───────────────────────────────────────────────────────
+  // Step 1: read the raw story and ask a few warm follow-up questions that pull out
+  // the details the pictures and movie need (who, when, where, what things looked like).
+  app.post("/api/story-helper/questions", async (req, res) => {
+    try {
+      const { content, era, category } = req.body || {};
+      if (!content || String(content).trim().length < 20) {
+        return res.status(400).json({ error: "Tell us a little more of your story first" });
+      }
+
+      const response = await openai.chat.completions.create({
+        model: TEXT_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: `You help older people (grandparents, aunties, uncles) turn a memory into a beautiful illustrated storybook and a short movie for their family.
+
+Read their story and ask 3 to 5 short, warm follow-up questions - the kind a curious grandchild would ask. Pick the questions that will most improve the story AND the pictures. Prioritise what is missing:
+- How old they were and roughly what year it was (only if not already clear)
+- Where exactly it happened and what the place looked, sounded and smelled like
+- Who else was there, and one detail about each person (what they wore, a habit, something they said)
+- What any important object looked like (e.g. the car, the bike, the fishing rod: colour, size, material)
+- What they were wearing
+- How they felt at the key moment, and what they remember most vividly
+- How it ended, or what it meant to them looking back
+
+Rules:
+- Never ask about something the story already answers.
+- One idea per question, under 20 words, plain friendly language. Australian English.
+- Give each question a short example answer hint to make it easy (e.g. "e.g. a long bamboo rod with a red reel").
+
+Respond in valid JSON ONLY:
+{"questions": [{"question": "...", "hint": "e.g. ..."}]}`,
+          },
+          {
+            role: "user",
+            content: `${era ? `Era: ${era}\n` : ""}${category ? `Type of memory: ${category}\n` : ""}Story:\n${String(content).slice(0, 12000)}`,
+          },
+        ],
+        max_completion_tokens: 3000,
+      });
+
+      let questions: { question: string; hint?: string }[] = [];
+      try {
+        const parsed = parseAiJson(response.choices[0]?.message?.content || "{}");
+        const list = Array.isArray(parsed) ? parsed : parsed?.questions;
+        if (Array.isArray(list)) {
+          questions = list
+            .filter((q: any) => q && typeof q.question === "string" && q.question.trim())
+            .slice(0, 5)
+            .map((q: any) => ({ question: q.question.trim(), hint: typeof q.hint === "string" ? q.hint.trim() : undefined }));
+        }
+      } catch (err) {
+        console.error("[StoryHelper] Could not parse questions:", (err as Error).message);
+      }
+      if (questions.length === 0) {
+        questions = [
+          { question: "How old were you, and roughly what year was it?", hint: "e.g. about 8, around 1965" },
+          { question: "Where were you, and what did it look like?", hint: "e.g. a sandy riverbank under big gum trees" },
+          { question: "Who else was there?", hint: "e.g. Dad in his old blue work shirt, and my brother Pete" },
+          { question: "What do you remember most about that moment?", hint: "e.g. the smell of the campfire" },
+        ];
+      }
+      res.json({ questions });
+    } catch (error) {
+      console.error("Error generating story questions:", error);
+      res.status(500).json({ error: "Failed to get questions" });
+    }
+  });
+
+  // Step 2: weave the answers into a vivid, picture-ready story in the storyteller's own voice.
+  app.post("/api/story-helper/write", async (req, res) => {
+    try {
+      const { content, era, category, answers } = req.body || {};
+      if (!content) return res.status(400).json({ error: "Content required" });
+
+      const qa = Array.isArray(answers)
+        ? answers
+            .filter((a: any) => a && typeof a.answer === "string" && a.answer.trim())
+            .map((a: any) => `Q: ${String(a.question || "").slice(0, 300)}\nA: ${String(a.answer).slice(0, 2000)}`)
+            .join("\n\n")
+        : "";
+
+      const response = await openai.chat.completions.create({
+        model: TEXT_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: `You are a gifted storyteller and ghost-writer. You help older people turn a real memory into the best possible version of their own story. It will be read aloud to their grandchildren and turned into an illustrated storybook and a short movie.
+
+Write the story so that it:
+- Stays TRUE. Use only the events, people and facts the storyteller gave (in the story and in their answers). Never invent new events, new people, names, or facts about real family members.
+- Sounds like THEM. First person, their voice, their sayings and slang (keep Australian expressions). Warm, simple language a 7-year-old can follow and an adult enjoys.
+- Is VIVID and CINEMATIC. Open with a strong scene that drops us into the moment. Show, don't tell. Bring in the sights, sounds, smells and weather they described, plus gentle period-authentic atmosphere for the era and place (only small sensory touches, never new plot).
+- Is easy to ILLUSTRATE. Make clear where each moment happens and who is there. Describe each important object ONCE in clear visual detail (colour, size, material) and then always call it the same thing, so it looks the same in every picture. Keep their age and clothing consistent.
+- Has a clear shape: a beginning that sets the scene, a middle with the key moment, and an ending that lands, ideally with a line of what it meant to them or what they'd want the grandkids to know.
+- Is 250 to 600 words, in short paragraphs (each paragraph roughly one picture). No headings, no title, no bullet points.
+
+Return ONLY the finished story text.`,
+          },
+          {
+            role: "user",
+            content: `${era ? `Era: ${era}\n` : ""}${category ? `Type of memory: ${category}\n` : ""}Their story:\n${String(content).slice(0, 12000)}${qa ? `\n\nTheir answers to follow-up questions:\n${qa}` : ""}`,
+          },
+        ],
+        max_completion_tokens: 6000,
+      });
+
+      const story = response.choices[0]?.message?.content?.trim();
+      if (!story) return res.status(500).json({ error: "Failed to write story" });
+      res.json({ story });
+    } catch (error) {
+      console.error("Error writing story:", error);
+      res.status(500).json({ error: "Failed to write story" });
+    }
+  });
+
   app.get("/api/video-config", (_req, res) => {
     res.json({
       aiVideoEnabled: isLumaConfigured(),
