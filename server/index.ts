@@ -6,6 +6,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from "./stripeClient";
+import { syncStripeProducts } from "./stripe-products";
 import { WebhookHandlers } from "./webhookHandlers";
 import { validateAndFixToken } from "./luma-client";
 import { setupAuth } from "./auth";
@@ -70,6 +71,12 @@ async function initStripe() {
       }
     } else {
       console.warn('No public URL (PUBLIC_URL / RAILWAY_PUBLIC_DOMAIN) set, skipping webhook setup');
+    }
+
+    try {
+      await syncStripeProducts();
+    } catch (err) {
+      console.error('Could not set up Stripe products/prices:', err instanceof Error ? err.message : err);
     }
 
     stripeSync.syncBackfill()

@@ -13,8 +13,8 @@ import { isOwner, userId } from "./auth";
  * - The app owner (ADMIN_EMAIL) is never limited.
  */
 export const FREE_PICTURES = 2;
-export const PICTURE_RUNS_PER_PURCHASE = Number(process.env.PICTURE_RUNS_PER_PURCHASE || 5);
-export const MOVIE_RUNS_PER_PURCHASE = Number(process.env.MOVIE_RUNS_PER_PURCHASE || 3);
+export const PICTURE_RUNS_PER_PURCHASE = Number(process.env.PICTURE_RUNS_PER_PURCHASE || 3);
+export const MOVIE_RUNS_PER_PURCHASE = Number(process.env.MOVIE_RUNS_PER_PURCHASE || 2);
 /** Cheap text/voice AI calls (transcribe, story helper, titles...) per account per day. */
 export const DAILY_TEXT_AI_LIMIT = Number(process.env.DAILY_TEXT_AI_LIMIT || 150);
 
