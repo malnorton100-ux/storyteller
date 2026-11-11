@@ -11,19 +11,19 @@ const PRODUCTS = [
     type: "pdf_download",
     name: "Storybook",
     description: "More storybook pictures for this story (up to 3 goes) and a printable PDF book to keep.",
-    cents: Number(process.env.PRICE_STORYBOOK_CENTS || 999),
+    cents: Number(process.env.PRICE_STORYBOOK_CENTS || 799),
   },
   {
     type: "video_download",
     name: "Movie",
     description: "Your story as a movie with you as the star, narrated in your voice (up to 2 goes). Yours to download and share.",
-    cents: Number(process.env.PRICE_MOVIE_CENTS || 1499),
+    cents: Number(process.env.PRICE_MOVIE_CENTS || 1299),
   },
   {
     type: "bundle_download",
     name: "Everything",
-    description: "The storybook AND the movie for this story: pictures, printable book and movie. Save $4.99.",
-    cents: Number(process.env.PRICE_EVERYTHING_CENTS || 1999),
+    description: "The storybook AND the movie for this story: pictures, printable book and movie. Save $5.99.",
+    cents: Number(process.env.PRICE_EVERYTHING_CENTS || 1499),
   },
 ];
 const CURRENCY = (process.env.PRICE_CURRENCY || "aud").toLowerCase();
