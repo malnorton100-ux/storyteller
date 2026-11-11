@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Mic, PenLine, BookOpen, Sparkles, ArrowRight, Library } from "lucide-react";
+import { Mic, PenLine, BookOpen, Clapperboard, Heart, ArrowRight, Library } from "lucide-react";
 import type { Story } from "@shared/schema";
 
 const heroImg = "/images/hero-storytelling.png";
@@ -43,10 +43,10 @@ export default function Home() {
             Storyteller
           </h1>
           <p className="text-white/90 text-lg md:text-xl lg:text-2xl max-w-xl mb-1 font-medium">
-            Every Life Has a Story Worth Keeping
+            Your life story, made into a movie for the grandkids.
           </p>
           <p className="text-white/80 text-sm md:text-base max-w-lg mb-6">
-            Record your memories, and watch them come alive as beautiful illustrated storybooks for your grandchildren.
+            Talk or type a memory. We'll help you make it amazing, then turn it into a movie and storybook with you as the star.
           </p>
           <div className="flex flex-wrap gap-3 justify-center">
             <Link href="/record">
@@ -74,31 +74,31 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
                   <Mic className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="font-semibold">1. Share Your Memory</h3>
+                <h3 className="font-semibold">1. Talk</h3>
                 <p className="text-sm text-muted-foreground">
-                  Talk into your phone, type it out, or sit with someone who can help you record your story.
+                  Tell a story from any time in your life. Talk into your phone or type it. No photos needed.
                 </p>
               </CardContent>
             </Card>
             <Card className="hover-elevate">
               <CardContent className="p-5 text-center space-y-3">
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-                  <Sparkles className="h-6 w-6 text-primary" />
+                  <Clapperboard className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="font-semibold">2. Choose Your Style</h3>
+                <h3 className="font-semibold">2. We make it</h3>
                 <p className="text-sm text-muted-foreground">
-                  Pick cartoon, realistic, or era-authentic style. AI brings your words to life as beautiful illustrations.
+                  We ask a few questions to bring it to life, then turn it into a movie and storybook set in your era, with you as the star.
                 </p>
               </CardContent>
             </Card>
             <Card className="hover-elevate">
               <CardContent className="p-5 text-center space-y-3">
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-                  <BookOpen className="h-6 w-6 text-primary" />
+                  <Heart className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="font-semibold">3. Share With Family</h3>
+                <h3 className="font-semibold">3. Share it</h3>
                 <p className="text-sm text-muted-foreground">
-                  Your grandkids can see and experience your memories through illustrated storybooks they'll treasure.
+                  Send it to the kids and grandkids so they can see who you really were.
                 </p>
               </CardContent>
             </Card>
