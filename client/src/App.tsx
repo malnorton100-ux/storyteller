@@ -9,7 +9,8 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { MenuButton } from "@/components/menu-button";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -116,7 +117,7 @@ function Shell() {
               <AppSidebar />
               <div className="flex flex-col flex-1 min-w-0">
                 <header className="flex items-center justify-between gap-1 p-2 border-b relative z-50">
-                  <SidebarTrigger className="h-9 w-9 min-h-[36px] min-w-[36px]" data-testid="button-sidebar-toggle" />
+                  <MenuButton />
                   <ThemeToggle />
                 </header>
                 <main className="flex-1 overflow-hidden">
