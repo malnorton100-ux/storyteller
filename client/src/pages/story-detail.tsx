@@ -10,6 +10,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { StoryPlayer } from "@/components/story-player";
 import { WorkingBanner } from "@/components/working-banner";
+import { UnlockDialog, type UnlockNeeds } from "@/components/unlock-dialog";
 import { shareImages } from "@/lib/share-images";
 import type { Story, Illustration, StoryVideo, StorytellerProfile, Purchase, StoryPerspective } from "@shared/schema";
 import { Input } from "@/components/ui/input";
@@ -350,8 +351,52 @@ export default function StoryDetail() {
     enabled: storyId > 0,
   });
 
+  type Allowance = { owner: boolean; freeStorybook: boolean; picturesUnlocked: boolean; movieUnlocked: boolean; pictureRunsLeft: number; movieRunsLeft: number };
+  const { data: allowance, refetch: refetchAllowance } = useQuery<Allowance>({
+    queryKey: ["/api/stories", storyId, "allowance"],
+    queryFn: async () => {
+      const res = await fetch(`/api/stories/${storyId}/allowance`, { credentials: "include" });
+      if (!res.ok) throw new Error("allowance");
+      return res.json();
+    },
+    enabled: storyId > 0,
+  });
+  const [unlock, setUnlock] = useState<{ needs: UnlockNeeds; usedUp?: boolean } | null>(null);
+  // Free first storybook: 2 pages only.
+  const freeStorybookOnly = !!allowance && !allowance.owner && !allowance.picturesUnlocked && allowance.freeStorybook;
+  const picturesBlocked = (): { needs: UnlockNeeds; usedUp?: boolean } | null => {
+    if (!allowance || allowance.owner) return null;
+    if (allowance.picturesUnlocked) return allowance.pictureRunsLeft > 0 ? null : { needs: "pictures", usedUp: true };
+    return allowance.freeStorybook ? null : { needs: "pictures" };
+  };
+  const movieBlocked = (): { needs: UnlockNeeds; usedUp?: boolean } | null => {
+    if (!allowance || allowance.owner) return null;
+    if (!allowance.movieUnlocked) return { needs: "movie" };
+    return allowance.movieRunsLeft > 0 ? null : { needs: "movie", usedUp: true };
+  };
+  /** If the server says "pay first" (402), show the unlock options. */
+  const showUnlockFrom402 = (err: unknown, fallback: UnlockNeeds) => {
+    const msg = String((err as Error)?.message || "");
+    if (!msg.startsWith("402")) return false;
+    let body: any = {};
+    try { body = JSON.parse(msg.slice(msg.indexOf("{"))); } catch {}
+    setUnlock({ needs: body.needs === "movie" || body.needs === "pictures" ? body.needs : fallback, usedUp: body.reason === "used_up" });
+    refetchAllowance();
+    return true;
+  };
+
   const hasPdfPurchase = storyPurchases?.some(p => p.productType === "pdf_download" || p.productType === "bundle_download") ?? false;
   const hasVideoPurchase = storyPurchases?.some(p => p.productType === "video_download" || p.productType === "bundle_download") ?? false;
+
+  // Sent here to unlock (e.g. the free storybook was already used).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const u = params.get("unlock");
+    if (u === "pictures" || u === "movie") {
+      setUnlock({ needs: u });
+      window.history.replaceState({}, "", `/stories/${storyId}`);
+    }
+  }, [storyId]);
 
   // Arriving from the guided start: pick up the picture job it already started.
   useEffect(() => {
@@ -372,7 +417,8 @@ export default function StoryDetail() {
         try {
           await apiRequest("POST", "/api/stripe/verify-payment", { sessionId: params.get("session_id") });
           refetchPurchases();
-          toast({ title: "Payment successful!", description: "Your download is now available." });
+          refetchAllowance();
+          toast({ title: "Unlocked!", description: "Thank you. You can now make it for this story." });
           window.history.replaceState({}, "", `/stories/${storyId}`);
         } catch {
           toast({ title: "Payment verification issue", description: "Please refresh the page.", variant: "destructive" });
@@ -383,7 +429,7 @@ export default function StoryDetail() {
       toast({ title: "Payment cancelled", description: "No charge was made." });
       window.history.replaceState({}, "", `/stories/${storyId}`);
     }
-  }, [storyId, toast, refetchPurchases]);
+  }, [storyId, toast, refetchPurchases, refetchAllowance]);
 
   const checkoutMutation = useMutation({
     mutationFn: async ({ priceId, productType }: { priceId: string; productType: string }) => {
@@ -423,7 +469,7 @@ export default function StoryDetail() {
   const generateMutation = useMutation({
     mutationFn: async (style: string) => {
       await apiRequest("PATCH", `/api/stories/${storyId}`, { contentRating: selectedRating });
-      const res = await apiRequest("POST", `/api/stories/${storyId}/illustrations`, { style, profileId: selectedProfileId, sceneCount });
+      const res = await apiRequest("POST", `/api/stories/${storyId}/illustrations`, { style, profileId: selectedProfileId, sceneCount: freeStorybookOnly ? 2 : sceneCount });
       return res.json();
     },
     onSuccess: (data) => {
@@ -432,8 +478,10 @@ export default function StoryDetail() {
       setIllustrationJobId(data.jobId);
       setIllustrationStartedAt(Date.now());
       setIllustrationProgress({ completed: 0, total: data.totalScenes || sceneCount });
+      refetchAllowance();
     },
-    onError: () => {
+    onError: (err) => {
+      if (showUnlockFrom402(err, "pictures")) { setDialogOpen(false); return; }
       toast({ title: "Generation failed", description: "Please try again in a moment.", variant: "destructive" });
     },
   });
@@ -484,9 +532,11 @@ export default function StoryDetail() {
       setVideoDialogOpen(false);
       setPollingVideoId(data.id);
       setVideoStartedAt(Date.now());
+      refetchAllowance();
       // The progress banner on the page explains what is happening - no extra pop-up.
     },
-    onError: () => {
+    onError: (err) => {
+      if (showUnlockFrom402(err, "movie")) { setVideoDialogOpen(false); return; }
       toast({ title: "Generation failed", description: "Please try again in a moment.", variant: "destructive" });
     },
   });
@@ -874,7 +924,7 @@ export default function StoryDetail() {
                 </div>
               </DialogContent>
             </Dialog>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog open={dialogOpen} onOpenChange={(o) => { const b = o ? picturesBlocked() : null; if (b) { setUnlock(b); return; } setDialogOpen(o); }}>
               <DialogTrigger asChild>
                 <Button variant="secondary" data-testid="button-create-illustration">
                   <Sparkles className="mr-2 h-4 w-4" />
@@ -928,6 +978,11 @@ export default function StoryDetail() {
                       ))}
                     </div>
                   </div>
+                  {freeStorybookOnly ? (
+                    <p className="rounded-md bg-primary/10 p-3 text-sm" data-testid="text-free-storybook">
+                      🎁 Your first storybook is free: 2 pages to see yourself in your story.
+                    </p>
+                  ) : (
                   <div>
                     <p className="text-sm font-medium mb-2">Number of Pages</p>
                     <div className="flex gap-2">
@@ -950,6 +1005,7 @@ export default function StoryDetail() {
                       ))}
                     </div>
                   </div>
+                  )}
                   <p className="text-base text-foreground/80 text-center" data-testid="text-illustration-wait-note">
                     🎨 Painting your pictures takes about 1–2 minutes.
                   </p>
@@ -967,7 +1023,7 @@ export default function StoryDetail() {
                     ) : (
                       <>
                         <Images className="mr-2 h-4 w-4" />
-                        Generate Story Series ({sceneCount} pages)
+                        {freeStorybookOnly ? "Make my free storybook (2 pages)" : `Generate Story Series (${sceneCount} pages)`}
                       </>
                     )}
                   </Button>
@@ -975,7 +1031,17 @@ export default function StoryDetail() {
               </DialogContent>
             </Dialog>
 
-            <Dialog open={videoDialogOpen} onOpenChange={setVideoDialogOpen}>
+            <UnlockDialog
+              open={unlock !== null}
+              onOpenChange={(o) => { if (!o) setUnlock(null); }}
+              needs={unlock?.needs || "movie"}
+              usedUp={unlock?.usedUp}
+              products={stripeProducts as any}
+              pending={checkoutMutation.isPending}
+              onBuy={(priceId, productType) => checkoutMutation.mutate({ priceId, productType })}
+            />
+
+            <Dialog open={videoDialogOpen} onOpenChange={(o) => { const b = o ? movieBlocked() : null; if (b) { setUnlock(b); return; } setVideoDialogOpen(o); }}>
               <DialogTrigger asChild>
                 <Button data-testid="button-create-video">
                   <Film className="mr-2 h-4 w-4" />

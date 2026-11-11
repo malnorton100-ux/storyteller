@@ -258,13 +258,25 @@ export default function Welcome({ onSkip }: { onSkip: () => void }) {
       ).json();
       setBusy("Starting your pictures…");
       setStep(3);
-      const job = await (
-        await apiRequest("POST", `/api/stories/${story.id}/illustrations`, {
-          style: "era",
-          profileId: profileIdRef.current,
-          sceneCount: 2,
-        })
-      ).json();
+      let job: any;
+      try {
+        job = await (
+          await apiRequest("POST", `/api/stories/${story.id}/illustrations`, {
+            style: "era",
+            profileId: profileIdRef.current,
+            sceneCount: 2,
+          })
+        ).json();
+      } catch (err) {
+        // Free storybook already used: the story is saved, so show the unlock options there.
+        if (String((err as Error)?.message || "").startsWith("402")) {
+          queryClient.invalidateQueries({ queryKey: ["/api/stories"] });
+          try { localStorage.setItem(ONBOARDING_SKIP_KEY, "done"); } catch {}
+          navigate(`/stories/${story.id}?unlock=pictures`);
+          return;
+        }
+        throw err;
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/stories"] });
       try { localStorage.setItem(ONBOARDING_SKIP_KEY, "done"); } catch {}
       navigate(`/stories/${story.id}?job=${encodeURIComponent(job.jobId)}&total=${job.totalScenes || 2}&first=1`);
