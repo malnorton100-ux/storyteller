@@ -22,7 +22,7 @@ const PRODUCTS = [
   {
     type: "bundle_download",
     name: "Everything",
-    description: "The storybook AND the movie for this story: pictures, printable book and movie. Save $5.99.",
+    description: "The storybook AND the movie for this story: pictures, printable book and movie. Best value - cheaper than buying both.",
     cents: Number(process.env.PRICE_EVERYTHING_CENTS || 1499),
   },
 ];
