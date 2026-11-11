@@ -82,6 +82,30 @@ function friendlyAiError(error: any): string {
   return `Something went wrong: ${msg.slice(0, 200)}`;
 }
 
+
+/**
+ * One exact outfit for the storyteller, used on every page so they look the same.
+ * For a child it must be modest and age-appropriate; anything else is swapped for
+ * a fixed modest outfit that suits the setting.
+ */
+function storytellerOutfitFor(isChild: boolean, aiOutfit: string, storyText: string): string {
+  const outfit = (aiOutfit || "").trim();
+  if (!isChild) return outfit;
+  const unsuitable = /g-?string|thong|bikini|speedo|budgie|underwear|undies|briefs|topless|shirtless|bare[- ]chest|naked|nude|swimsuit|swimmers|cossie|togs|trunks/i;
+  if (outfit && !unsuitable.test(outfit)) return `${outfit} (modest, age-appropriate)`;
+  const watery = /beach|surf|swim|ocean|sea|wave|pool|river|creek|lake|break ?wall|rock ?pool/i.test(storyText);
+  return watery
+    ? "a plain navy long-sleeve rash vest and red knee-length boardshorts"
+    : "a plain navy T-shirt and khaki knee-length shorts";
+}
+
+/** One clear line about glasses so they don't come and go between pages. */
+function glassesLine(info: any): string {
+  return String(info?.storyteller?.glasses || "").toLowerCase().startsWith("y")
+    ? "Wears the same glasses in every picture."
+    : "Does NOT wear glasses in any picture.";
+}
+
 /** A movie that takes longer than this is marked failed (and the user emailed) instead of spinning forever. */
 const MOVIE_TIME_LIMIT_MS = Number(process.env.MOVIE_TIME_LIMIT_MINUTES || 25) * 60 * 1000;
 function withTimeLimit<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -343,7 +367,8 @@ Respond in JSON:
     "ageInStory": "specific age, e.g. about 10 years old / 17 / mid-20s / 40s",
     "isChild": true/false (true if under 18),
     "description": "DETAILED physical description for their age IN THE STORY. Start with: ethnicity, skin tone, eye color/shape, nose shape, face shape (from their current photo). Then age-adjust everything else: if they were a child, describe a child's body — small, lean, smooth skin, NO tattoos, NO facial hair, NO wrinkles, thick full-colored hair. If young adult, no grey hair, fewer lines, leaner build. Be very specific about what they looked like at that age.",
-    "outfit": "one SPECIFIC outfit appropriate for the activity and era — name exact colors and garments, e.g. 'faded blue singlet, tan shorts, brown leather sandals'"
+    "outfit": "one SPECIFIC outfit appropriate for the activity and era — name exact colors and garments, e.g. 'faded blue singlet, tan shorts, brown leather sandals'. If they are a child or teen, it MUST be modest and age-appropriate (e.g. a rash vest and boardshorts for the beach), whatever the story says.",
+    "glasses": "yes or no - did they wear glasses AT THIS AGE? Only yes if the story says so, or they are an adult who wears glasses in the photo."
   },
   "otherCharacters": ["dad (adult, 30s)", "friend (same age as storyteller)"],
   "setting": "brief setting/location"
@@ -363,11 +388,11 @@ Respond in JSON:
         console.warn("[Illustrations] Character analysis parse failed, using defaults");
       }
 
-      const storytellerDesc = charInfo?.storyteller?.description || (isChildStory ? "a young child with same ethnicity and skin tone as reference photo" : "the main character matching the reference photo");
+      const storytellerDesc = `${charInfo?.storyteller?.description || (isChildStory ? "a young child with same ethnicity and skin tone as reference photo" : "the main character matching the reference photo")} ${glassesLine(charInfo)}`;
       const storytellerAge = charInfo?.storyteller?.ageInStory || (isChildStory ? "about 10 years old" : "");
       const storytellerIsChild = charInfo?.storyteller?.isChild ?? isChildStory;
       // Children are always drawn modestly dressed, whatever the story says they wore.
-      const storytellerOutfit = storytellerIsChild ? "ordinary, modest, age-appropriate clothing for the activity and era (e.g. boardshorts and a T-shirt or rash vest at the beach)" : (charInfo?.storyteller?.outfit || "");
+      const storytellerOutfit = storytellerOutfitFor(storytellerIsChild, charInfo?.storyteller?.outfit || "", storyText);
       const otherCharsSimple = Array.isArray(charInfo?.otherCharacters) ? charInfo.otherCharacters.join(", ") : "";
 
       const sceneSplitResponse = await openai.chat.completions.create({
@@ -468,7 +493,7 @@ Respond in valid JSON format ONLY:
       let ageTransformedRefPath: string | null = null;
 
       if (storytellerIsChild && profilePhotoPath && fs.existsSync(profilePhotoPath)) {
-        const ageTransformPrompt = `This is a photo of a real person. Generate a portrait of this SAME person but as a ${storytellerAge || "young teenager"}. Keep their EXACT same face — same eyes, same nose, same face shape, same skin tone, same ethnicity. Just make them younger: smooth skin, no wrinkles, full thick ${storytellerDesc.includes("dark") ? "dark" : "natural-colored"} hair, youthful features. Same person, just younger. Head and shoulders, three-quarter view, natural relaxed expression, looking slightly away from the camera, neutral background.`;
+        const ageTransformPrompt = `This is a photo of a real person. Generate a portrait of this SAME person but as a ${storytellerAge || "young teenager"}. Keep their EXACT same face — same eyes, same nose, same face shape, same skin tone, same ethnicity. Just make them younger: smooth skin, no wrinkles, full thick ${storytellerDesc.includes("dark") ? "dark" : "natural-colored"} hair, youthful features. Same person, just younger. ${glassesLine(charInfo)} Head and shoulders, three-quarter view, natural relaxed expression, looking slightly away from the camera, neutral background.`;
         console.log(`[Child story] Step 0: Generating age-transformed portrait (${storytellerAge})...`);
         try {
           const ageTransformBuf = await generateImageWithReference(profilePhotoPath, ageTransformPrompt, "1024x1024");
@@ -499,7 +524,7 @@ Respond in valid JSON format ONLY:
       if (effectiveRefPath && fs.existsSync(effectiveRefPath)) {
         const scene0 = scenes[0];
         const charGuide = storytellerIsChild
-          ? `The reference image shows the storyteller [STORYTELLER] at ${storytellerAge}. Draw them EXACTLY as they appear in the reference — same face, same hair, same build. Outfit: ${storytellerOutfit}. They are the STAR — the largest, most prominent figure. Any adult (parent, etc.) is a DIFFERENT person who must NOT resemble the reference.`
+          ? `The reference image shows the storyteller [STORYTELLER] at ${storytellerAge}. Draw them EXACTLY as they appear in the reference — same face, same hair, same build. ${glassesLine(charInfo)} Outfit: ${storytellerOutfit}. They are the STAR — the largest, most prominent figure. Any adult (parent, etc.) is a DIFFERENT person who must NOT resemble the reference.`
           : `THE STORYTELLER [STORYTELLER]: ${storytellerDesc}. Age: ${storytellerAge}. Outfit: ${storytellerOutfit}. Apply the reference photo to THIS character. They are the STAR — make them the focal point.`;
         const childNote = storytellerIsChild ? `The storyteller is ${storytellerAge} — draw them as a child/teen exactly matching the reference portrait. ` : "";
         const prompt0 = `Illustrate this personal memory scene: "${scene0.description}". ${sceneDirection(scene0)} ${charGuide} ${childNote}${appearanceInstruction}${styleInstruction} No text or words in the image. Make it warm, emotional, and nostalgic.`;
@@ -539,7 +564,7 @@ Respond in valid JSON format ONLY:
         const sceneCharGuide = isPresent
           ? `PRESENT DAY: this page shows the storyteller [STORYTELLER] as they look TODAY - match the person in the reference photo exactly, at their real current age. Not a child.`
           : storytellerIsChild
-          ? `The reference image shows the storyteller [STORYTELLER] as a child/teen. Match them EXACTLY — same face, same hair, same body size, same outfit (${storytellerOutfit}). Age: ${storytellerAge}. They must look identical across all scenes. Any adults are DIFFERENT people.`
+          ? `The reference image shows the storyteller [STORYTELLER] as a child/teen. Match them EXACTLY — same face, same hair, same body size, same outfit (${storytellerOutfit}). ${glassesLine(charInfo)} Age: ${storytellerAge}. They must look identical across all scenes. Any adults are DIFFERENT people.`
           : `THE STORYTELLER [STORYTELLER]: ${storytellerDesc}. Age: ${storytellerAge}. Outfit: ${storytellerOutfit}. Must look IDENTICAL to the person in the reference image. They are the STAR.`;
         const prompt = `Illustrate this personal memory scene: "${scene.description}". ${sceneDirection(scene)} ${sceneCharGuide} ${appearanceInstruction}${styleInstruction} No text or words in the image. Make it warm, emotional, and nostalgic.`;
 
@@ -1056,7 +1081,8 @@ Respond in JSON:
     "ageInStory": "specific age, e.g. about 10 years old / 17 / mid-20s",
     "isChild": true/false (true if under 18),
     "description": "DETAILED physical description for their age IN THE STORY. Ethnicity, skin tone, eye color/shape, nose shape, face shape from current photo. Then age-adjust: if child — small, lean, smooth skin, NO tattoos, NO facial hair, thick full-colored hair. Be very specific.",
-    "outfit": "one SPECIFIC outfit — exact colors and garments"
+    "outfit": "one SPECIFIC outfit — exact colors and garments. If they are a child or teen, it MUST be modest and age-appropriate (e.g. a rash vest and boardshorts for the beach), whatever the story says.",
+    "glasses": "yes or no - did they wear glasses AT THIS AGE? Only yes if the story says so, or they are an adult who wears glasses in the photo."
   },
   "otherCharacters": ["dad (adult, 30s)", "friend (same age)"],
   "setting": "brief setting"
@@ -1076,10 +1102,10 @@ Respond in JSON:
             console.warn("[Video] Character analysis parse failed, using defaults");
           }
 
-          const vidStorytellerDesc = vidCharInfo?.storyteller?.description || (videoIsChildStory ? "a young child with same ethnicity as reference" : "the main character matching reference photo");
+          const vidStorytellerDesc = `${vidCharInfo?.storyteller?.description || (videoIsChildStory ? "a young child with same ethnicity as reference" : "the main character matching reference photo")} ${glassesLine(vidCharInfo)}`;
           const vidStorytellerAge = vidCharInfo?.storyteller?.ageInStory || (videoIsChildStory ? "about 10 years old" : "");
           const vidStorytellerIsChild = vidCharInfo?.storyteller?.isChild ?? videoIsChildStory;
-          const vidStorytellerOutfit = vidStorytellerIsChild ? "ordinary, modest, age-appropriate clothing for the activity and era (e.g. boardshorts and a T-shirt or rash vest at the beach)" : (vidCharInfo?.storyteller?.outfit || "");
+          const vidStorytellerOutfit = storytellerOutfitFor(vidStorytellerIsChild, vidCharInfo?.storyteller?.outfit || "", story.content);
           const vidOtherCharsSimple = Array.isArray(vidCharInfo?.otherCharacters) ? vidCharInfo.otherCharacters.join(", ") : "";
 
           const sceneResponse = await openai.chat.completions.create({
@@ -1149,7 +1175,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
           let videoAgeTransformedRefPath: string | null = null;
 
           if (vidStorytellerIsChild && hasReferencePhoto) {
-            const vidAgePrompt = `This is a photo of a real person. Generate a portrait of this SAME person but as a ${vidStorytellerAge || "young teenager"}. Keep their EXACT same face — same eyes, same nose, same face shape, same skin tone, same ethnicity. Just make them younger: smooth skin, no wrinkles, full thick hair, youthful features. Same person, just younger. Head and shoulders, three-quarter view, natural relaxed expression, looking slightly away from the camera, neutral background.`;
+            const vidAgePrompt = `This is a photo of a real person. Generate a portrait of this SAME person but as a ${vidStorytellerAge || "young teenager"}. Keep their EXACT same face — same eyes, same nose, same face shape, same skin tone, same ethnicity. Just make them younger: smooth skin, no wrinkles, full thick hair, youthful features. Same person, just younger. ${glassesLine(vidCharInfo)} Head and shoulders, three-quarter view, natural relaxed expression, looking slightly away from the camera, neutral background.`;
             console.log(`[Child video] Step 0: Generating age-transformed portrait (${vidStorytellerAge})...`);
             try {
               const vidAgeBuf = await generateImageWithReference(videoProfilePhotoPath!, vidAgePrompt, "1024x1024");
@@ -1168,7 +1194,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
           if (videoEffectiveRefPath && fs.existsSync(videoEffectiveRefPath)) {
             const scene0 = scenesParsed[0];
             const vidCharGuide0 = vidStorytellerIsChild
-              ? `The reference image shows the storyteller [STORYTELLER] at ${vidStorytellerAge}. Draw them EXACTLY as they appear in the reference — same face, same hair, same build. Outfit: ${vidStorytellerOutfit}. They are the STAR — the largest, most prominent figure. Any adult is a DIFFERENT person who must NOT resemble the reference.`
+              ? `The reference image shows the storyteller [STORYTELLER] at ${vidStorytellerAge}. Draw them EXACTLY as they appear in the reference — same face, same hair, same build. ${glassesLine(vidCharInfo)} Outfit: ${vidStorytellerOutfit}. They are the STAR — the largest, most prominent figure. Any adult is a DIFFERENT person who must NOT resemble the reference.`
               : `THE STORYTELLER [STORYTELLER]: ${vidStorytellerDesc}. Age: ${vidStorytellerAge}. Outfit: ${vidStorytellerOutfit}. Apply the reference photo to the storyteller. They are the STAR.`;
             const vidChildNote = vidStorytellerIsChild ? `The storyteller is ${vidStorytellerAge} — draw them as a child/teen exactly matching the reference portrait. ` : "";
             const prompt0 = `${scene0.prompt}. ${vidCharGuide0} ${vidChildNote}${appearanceInstruction}${styleInstruction}. No text or words in the image. Cinematic widescreen composition, 16:9 aspect ratio.`;
@@ -1193,7 +1219,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
             if (cancelledVideoIds.has(video.id)) throw new Error("Video cancelled");
             const i = videoConsistencyRefPath ? idx + 1 : idx;
             const vidSceneCharGuide = vidStorytellerIsChild
-              ? `The reference image shows the storyteller [STORYTELLER] as a child/teen. Match them EXACTLY — same face, same hair, same body size, same outfit (${vidStorytellerOutfit}). Age: ${vidStorytellerAge}. They must look identical across all scenes. Any adults are DIFFERENT people.`
+              ? `The reference image shows the storyteller [STORYTELLER] as a child/teen. Match them EXACTLY — same face, same hair, same body size, same outfit (${vidStorytellerOutfit}). ${glassesLine(vidCharInfo)} Age: ${vidStorytellerAge}. They must look identical across all scenes. Any adults are DIFFERENT people.`
               : `THE STORYTELLER [STORYTELLER]: ${vidStorytellerDesc}. Age: ${vidStorytellerAge}. Outfit: ${vidStorytellerOutfit}. Must look IDENTICAL to reference. They are the STAR.`;
             const fullPrompt = `${scene.prompt}. ${vidSceneCharGuide} ${appearanceInstruction}${styleInstruction}. No text or words in the image. Cinematic widescreen composition, 16:9 aspect ratio.`;
 
