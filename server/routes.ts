@@ -663,7 +663,7 @@ Read their story and ask 3 to 5 short, warm follow-up questions - the kind a cur
 
 Rules:
 - Never ask about something the story already answers.
-- One idea per question, under 20 words, plain friendly language. Australian English.
+- One idea per question, under 20 words, plain friendly language. Write in the same language and spelling style the storyteller uses.
 - Give each question a short example answer hint to make it easy (e.g. "e.g. a long bamboo rod with a red reel").
 
 Respond in valid JSON ONLY:
@@ -693,7 +693,7 @@ Respond in valid JSON ONLY:
       if (questions.length === 0) {
         questions = [
           { question: "How old were you, and roughly what year was it?", hint: "e.g. about 8, around 1965" },
-          { question: "Where were you, and what did it look like?", hint: "e.g. a sandy riverbank under big gum trees" },
+          { question: "Where were you, and what did it look like?", hint: "e.g. a sandy riverbank under tall trees" },
           { question: "Who else was there?", hint: "e.g. Dad in his old blue work shirt, and my brother Pete" },
           { question: "What do you remember most about that moment?", hint: "e.g. the smell of the campfire" },
         ];
@@ -727,7 +727,7 @@ Respond in valid JSON ONLY:
 
 Write the story so that it:
 - Stays TRUE. Use only the events, people and facts the storyteller gave (in the story and in their answers). Never invent new events, new people, names, or facts about real family members.
-- Sounds like THEM. First person, their voice, their sayings and slang (keep Australian expressions). Warm, simple language a 7-year-old can follow and an adult enjoys.
+- Sounds like THEM. First person, their voice, their sayings, slang and regional expressions, wherever they are from. Write in the same language and spelling style they used. Warm, simple language a 7-year-old can follow and an adult enjoys.
 - Is VIVID and CINEMATIC. Open with a strong scene that drops us into the moment. Show, don't tell. Bring in the sights, sounds, smells and weather they described, plus gentle period-authentic atmosphere for the era and place (only small sensory touches, never new plot).
 - Is easy to ILLUSTRATE. Make clear where each moment happens and who is there. Describe each important object ONCE in clear visual detail (colour, size, material) and then always call it the same thing, so it looks the same in every picture. Keep their age and clothing consistent.
 - Has a clear shape: a beginning that sets the scene, a middle with the key moment, and an ending that lands, ideally with a line of what it meant to them or what they'd want the grandkids to know.
