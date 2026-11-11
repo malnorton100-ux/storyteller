@@ -130,6 +130,36 @@ const CAST_JSON_HINT = `"otherCharacters": [
     {"name": "their name as used in the story, or empty", "role": "e.g. older brother / dad / old fisherman", "age": "e.g. 14 / 40s", "look": "hair colour and style, build, one distinctive feature (e.g. curly sandy hair, freckles, tall and skinny)", "outfit": "ONE specific outfit with exact colours, e.g. 'navy T-shirt, grey boardshorts'. Use what the story says they wore; otherwise pick something era-appropriate. Children and teens are ALWAYS modestly dressed. Make each person's outfit clearly DIFFERENT from the storyteller's and from each other's so they are easy to tell apart."}
   ],`;
 
+/** True when a story has no real title yet. */
+function needsTitle(title: unknown): boolean {
+  const t = String(title || "").trim().toLowerCase();
+  return !t || t === "untitled story" || t === "untitled";
+}
+
+/** A short, warm AI title for a story. Throws if the AI is unavailable. */
+async function aiTitle(content: string): Promise<string> {
+  const response = await openai.chat.completions.create({
+    model: TEXT_MODEL,
+    messages: [
+      { role: "system", content: "Generate a short, warm, evocative title for this personal story/memory. The title should be 3-8 words. Return ONLY the title, nothing else." },
+      { role: "user", content: String(content || "").substring(0, 1500) },
+    ],
+    max_completion_tokens: 2000,
+  });
+  const title = response.choices[0]?.message?.content?.trim().replace(/^["']|["']$/g, "");
+  if (!title) throw new Error("No title returned");
+  return title.slice(0, 120);
+}
+
+/** Give an untitled story an AI title in the background (never blocks or fails the request). */
+function fillTitleLater(storyId: number, content: string) {
+  if (!content || content.trim().length < 20) return;
+  aiTitle(content)
+    .then((title) => storage.updateStory(storyId, { title }))
+    .then(() => console.log(`[Title] Gave story ${storyId} an AI title`))
+    .catch((e) => console.warn(`[Title] Could not title story ${storyId}:`, e?.message));
+}
+
 /** A movie that takes longer than this is marked failed (and the user emailed) instead of spinning forever. */
 const MOVIE_TIME_LIMIT_MS = Number(process.env.MOVIE_TIME_LIMIT_MINUTES || 25) * 60 * 1000;
 function withTimeLimit<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -179,7 +209,19 @@ export async function registerRoutes(
   app.post("/api/stories", async (req, res) => {
     try {
       const parsed = insertStorySchema.parse(req.body);
-      const story = await storage.createStory({ ...parsed, userId: userId(req), shareToken: null });
+      let title = parsed.title;
+      // No title typed: ask the AI for one (quickly) rather than saving "Untitled Story".
+      if (needsTitle(title) && parsed.content && String(parsed.content).trim().length >= 20) {
+        try {
+          title = await Promise.race([
+            aiTitle(String(parsed.content)),
+            new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Title took too long")), 15000)),
+          ]);
+        } catch (e) {
+          console.warn("[Title] Using 'Untitled Story':", (e as Error).message);
+        }
+      }
+      const story = await storage.createStory({ ...parsed, title: title || "Untitled Story", userId: userId(req), shareToken: null });
       // No AI cover here (it cost a picture for every story, paid or not):
       // the first storybook picture becomes the cover.
       res.status(201).json(story);
@@ -294,6 +336,8 @@ export async function registerRoutes(
 
       const story = await storage.getStory(storyId);
       if (!story) return res.status(404).json({ error: "Story not found" });
+      // Older stories saved as "Untitled Story" get a proper title while the pictures are made.
+      if (needsTitle(story.title)) fillTitleLater(storyId, story.content);
 
       // Who pays: free first storybook (2 pages), otherwise the story must be unlocked.
       const claim = await claimPictureRun(req, storyId);
