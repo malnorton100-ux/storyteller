@@ -793,7 +793,7 @@ Respond in valid JSON ONLY:
       res.json({ questions });
     } catch (error) {
       console.error("Error generating story questions:", error);
-      res.status(500).json({ error: "Failed to get questions" });
+      res.status(500).json({ error: friendlyAiError(error) });
     }
   });
 
@@ -840,7 +840,7 @@ Return ONLY the finished story text.`,
       res.json({ story });
     } catch (error) {
       console.error("Error writing story:", error);
-      res.status(500).json({ error: "Failed to write story" });
+      res.status(500).json({ error: friendlyAiError(error) });
     }
   });
 
