@@ -16,7 +16,7 @@ const STEPS = [
   {
     icon: Mic,
     title: "Talk",
-    text: "Tell a story from any time in your life, like being a kid, your first job, or the day you arrived in Australia.",
+    text: "Tell a story from any time in your life, like being a kid, your first job, or the day you moved to a new country.",
   },
   {
     icon: Clapperboard,
