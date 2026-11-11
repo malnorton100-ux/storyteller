@@ -9,6 +9,19 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 type Question = { question: string; hint?: string };
+
+/** Pull the server's plain-English reason out of an "500: {"error":"..."}" error. */
+function reasonFrom(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err || "");
+  const body = msg.replace(/^\d{3}:\s*/, "");
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed.error === "string" && parsed.error.trim()) return parsed.error;
+  } catch {}
+  if (/^401/.test(msg)) return "You've been logged out. Please log in again.";
+  if (/failed to fetch|network/i.test(msg)) return "Couldn't reach the app. Check your internet and try again.";
+  return "Please try again.";
+}
 type Step = "questions" | "result";
 
 interface StoryHelperProps {
@@ -40,9 +53,9 @@ export function StoryHelper({ content, era, category, onUse }: StoryHelperProps)
       setAnswers(data.questions.map(() => ""));
       setStep("questions");
     },
-    onError: () => {
+    onError: (err) => {
       setOpen(false);
-      toast({ title: "Couldn't start the Story Helper", description: "Please try again.", variant: "destructive" });
+      toast({ title: "Couldn't start the Story Helper", description: reasonFrom(err), variant: "destructive" });
     },
   });
 
@@ -60,8 +73,8 @@ export function StoryHelper({ content, era, category, onUse }: StoryHelperProps)
       setStory(data.story);
       setStep("result");
     },
-    onError: () => {
-      toast({ title: "Couldn't write your story", description: "Please try again.", variant: "destructive" });
+    onError: (err) => {
+      toast({ title: "Couldn't write your story", description: reasonFrom(err), variant: "destructive" });
     },
   });
 
