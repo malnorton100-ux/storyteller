@@ -98,7 +98,7 @@ export function UnlockDialog({
               </div>
             );
           })}
-          <p className="text-xs text-muted-foreground text-center">Secure payment by Stripe. One-off, no subscription.</p>
+          <p className="text-xs text-muted-foreground text-center">Secure payment by Stripe. One-off, no subscription. See our <a href="/terms" target="_blank" className="underline">terms and refunds</a>.</p>
         </div>
       </DialogContent>
     </Dialog>

@@ -265,6 +265,11 @@ export default function AuthPage() {
                   {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {isRegister ? "Start my story" : mode === "forgot" ? "Send reset link" : "Log in"}
                 </Button>
+                {isRegister && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    By signing up you agree to our <a href="/terms" className="underline">Terms</a> and <a href="/privacy" className="underline">Privacy policy</a>.
+                  </p>
+                )}
               </form>
             </CardContent>
           </Card>
@@ -283,7 +288,12 @@ export default function AuthPage() {
         </div>
       </section>
 
-      <footer className="px-5 pb-8 text-center text-sm text-muted-foreground">Every story matters.</footer>
+      <footer className="px-5 pb-8 text-center text-sm text-muted-foreground space-y-2">
+        <p>Every story matters.</p>
+        <p>
+          <a href="/privacy" className="hover:underline">Privacy</a> · <a href="/terms" className="hover:underline">Terms</a>
+        </p>
+      </footer>
     </div>
   );
 }

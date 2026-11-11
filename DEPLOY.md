@@ -90,3 +90,12 @@ Voice samples are stored in `/data/private/voice-samples` and only play for thei
 
 ## Prices (set automatically in Stripe on start-up)
 Storybook A$7.99, Movie A$12.99, Everything A$14.99 (launch pricing). To change them, set `PRICE_STORYBOOK_CENTS`, `PRICE_MOVIE_CENTS`, `PRICE_EVERYTHING_CENTS` (e.g. `1499` = $14.99) in Railway and redeploy. Old prices are archived automatically.
+
+## Privacy policy & terms
+Public pages at `/privacy` and `/terms`. Set these in Railway → Variables so they show your details:
+
+| Variable | Example |
+|---|---|
+| `BUSINESS_NAME` | `Mal Norton trading as Storyteller` |
+| `ABN` | `12 345 678 901` |
+| `CONTACT_EMAIL` | `hello@yourdomain.com.au` |
