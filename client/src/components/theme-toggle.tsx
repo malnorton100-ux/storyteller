@@ -1,18 +1,21 @@
 import { Moon, Sun } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useTheme } from "./theme-provider";
 
+/** Big, labelled switch between light and dark screens. */
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
+  const isLight = theme === "light";
 
   return (
-    <Button
-      size="icon"
-      variant="ghost"
+    <button
+      type="button"
       onClick={toggleTheme}
+      className="flex items-center gap-2 h-12 min-w-[48px] px-4 rounded-lg border-2 border-border bg-background text-lg font-semibold hover:bg-muted active:bg-muted transition-colors"
+      aria-label={isLight ? "Switch to dark screen" : "Switch to light screen"}
       data-testid="button-theme-toggle"
     >
-      {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-    </Button>
+      {isLight ? <Moon className="h-6 w-6" /> : <Sun className="h-6 w-6" />}
+      <span>{isLight ? "Dark" : "Light"}</span>
+    </button>
   );
 }
