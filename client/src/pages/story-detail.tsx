@@ -1267,7 +1267,86 @@ export default function StoryDetail() {
           />
         )}
 
-        {story.coverImageUrl && (
+        {story.illustrations && story.illustrations.length > 0 && (() => {
+          const sceneSets: Illustration[][] = [];
+          let currentSet: Illustration[] = [];
+          let lastStyle = "";
+          const sorted = [...story.illustrations].sort((a, b) => (a.sceneOrder || 0) - (b.sceneOrder || 0) || a.id - b.id);
+
+          sorted.forEach((ill, idx) => {
+            if (ill.sceneCaption && ill.sceneOrder) {
+              if (currentSet.length > 0 && (ill.sceneOrder === 1 || ill.style !== lastStyle)) {
+                sceneSets.push(currentSet);
+                currentSet = [];
+              }
+              currentSet.push(ill);
+              lastStyle = ill.style;
+            } else {
+              if (currentSet.length > 0) {
+                sceneSets.push(currentSet);
+                currentSet = [];
+              }
+              sceneSets.push([ill]);
+            }
+            if (idx === sorted.length - 1 && currentSet.length > 0) {
+              sceneSets.push(currentSet);
+            }
+          });
+
+          return (
+            <section className="space-y-3" data-testid="section-illustrations">
+              <div className="flex items-center gap-2">
+                <Palette className="h-5 w-5 text-primary" />
+                <h2 className="text-lg font-semibold">Storybook</h2>
+              </div>
+              {sceneSets.map((set, setIdx) => {
+                const allSorted = [...(story.illustrations || [])].sort((a, b) => (a.sceneOrder || 0) - (b.sceneOrder || 0));
+                const firstIllOfSet = [...set].sort((a, b) => (a.sceneOrder || 0) - (b.sceneOrder || 0))[0];
+                const indexOffset = allSorted.findIndex(ill => ill.id === firstIllOfSet.id);
+                if (set.length > 1 && set[0].sceneCaption) {
+                  return (
+                    <StorySlideshow
+                      key={`set-${setIdx}`}
+                      illustrations={set}
+                      onViewImage={setViewingImageIndex}
+                      onDelete={(id) => deleteIllustrationMutation.mutate(id)}
+                      storyId={storyId}
+                      indexOffset={indexOffset >= 0 ? indexOffset : 0}
+                    />
+                  );
+                }
+                return (
+                  <Card key={`single-${set[0].id}`} data-testid={`card-illustration-${set[0].id}`}>
+                    <CardContent className="p-0 relative group">
+                      <img
+                        src={set[0].imageUrl}
+                        alt={set[0].sceneCaption || `${set[0].style} illustration`}
+                        className="w-full aspect-[16/10] object-cover rounded-t-md cursor-pointer"
+                        onClick={() => setViewingImageIndex(indexOffset >= 0 ? indexOffset : 0)}
+                      />
+                      <div className="p-3 flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-2">
+                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm capitalize">{set[0].sceneCaption || `${set[0].style} style`}</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteIllustrationMutation.mutate(set[0].id)}
+                          data-testid={`button-delete-illustration-${set[0].id}`}
+                        >
+                          <Trash2 className="h-3 w-3 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </section>
+          );
+        })()}
+
+        {story.coverImageUrl && !(story.illustrations && story.illustrations.length > 0) && (
           <img
             src={story.coverImageUrl}
             alt={story.title}
@@ -1699,84 +1778,6 @@ export default function StoryDetail() {
         )}
 
 
-        {story.illustrations && story.illustrations.length > 0 && (() => {
-          const sceneSets: Illustration[][] = [];
-          let currentSet: Illustration[] = [];
-          let lastStyle = "";
-          const sorted = [...story.illustrations].sort((a, b) => (a.sceneOrder || 0) - (b.sceneOrder || 0) || a.id - b.id);
-
-          sorted.forEach((ill, idx) => {
-            if (ill.sceneCaption && ill.sceneOrder) {
-              if (currentSet.length > 0 && (ill.sceneOrder === 1 || ill.style !== lastStyle)) {
-                sceneSets.push(currentSet);
-                currentSet = [];
-              }
-              currentSet.push(ill);
-              lastStyle = ill.style;
-            } else {
-              if (currentSet.length > 0) {
-                sceneSets.push(currentSet);
-                currentSet = [];
-              }
-              sceneSets.push([ill]);
-            }
-            if (idx === sorted.length - 1 && currentSet.length > 0) {
-              sceneSets.push(currentSet);
-            }
-          });
-
-          return (
-            <section className="space-y-6 pt-4" data-testid="section-illustrations">
-              <div className="flex items-center gap-2">
-                <Palette className="h-5 w-5 text-primary" />
-                <h2 className="text-lg font-semibold">Story Illustrations</h2>
-              </div>
-              {sceneSets.map((set, setIdx) => {
-                const allSorted = [...(story.illustrations || [])].sort((a, b) => (a.sceneOrder || 0) - (b.sceneOrder || 0));
-                const firstIllOfSet = [...set].sort((a, b) => (a.sceneOrder || 0) - (b.sceneOrder || 0))[0];
-                const indexOffset = allSorted.findIndex(ill => ill.id === firstIllOfSet.id);
-                if (set.length > 1 && set[0].sceneCaption) {
-                  return (
-                    <StorySlideshow
-                      key={`set-${setIdx}`}
-                      illustrations={set}
-                      onViewImage={setViewingImageIndex}
-                      onDelete={(id) => deleteIllustrationMutation.mutate(id)}
-                      storyId={storyId}
-                      indexOffset={indexOffset >= 0 ? indexOffset : 0}
-                    />
-                  );
-                }
-                return (
-                  <Card key={`single-${set[0].id}`} data-testid={`card-illustration-${set[0].id}`}>
-                    <CardContent className="p-0 relative group">
-                      <img
-                        src={set[0].imageUrl}
-                        alt={set[0].sceneCaption || `${set[0].style} illustration`}
-                        className="w-full aspect-[16/10] object-cover rounded-t-md cursor-pointer"
-                        onClick={() => setViewingImageIndex(indexOffset >= 0 ? indexOffset : 0)}
-                      />
-                      <div className="p-3 flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-2">
-                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm capitalize">{set[0].sceneCaption || `${set[0].style} style`}</span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteIllustrationMutation.mutate(set[0].id)}
-                          data-testid={`button-delete-illustration-${set[0].id}`}
-                        >
-                          <Trash2 className="h-3 w-3 text-muted-foreground" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </section>
-          );
-        })()}
       </div>
     </div>
   );
