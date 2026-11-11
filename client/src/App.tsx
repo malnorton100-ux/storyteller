@@ -23,6 +23,7 @@ import Profile from "@/pages/profile";
 import Timeline from "@/pages/timeline";
 import SharedStory from "@/pages/shared-story";
 import ResetPassword from "@/pages/reset-password";
+import { PrivacyPage, TermsPage } from "@/pages/legal";
 import Prompts from "@/pages/prompts";
 
 function Router() {
@@ -68,6 +69,10 @@ function Shell() {
       </main>
     );
   }
+
+  // Privacy policy and terms are public.
+  if (location.startsWith("/privacy")) return <main className="h-screen overflow-y-auto"><PrivacyPage /></main>;
+  if (location.startsWith("/terms")) return <main className="h-screen overflow-y-auto"><TermsPage /></main>;
 
   // Password reset link from email - works whether or not someone is logged in.
   if (location.startsWith("/reset-password")) {

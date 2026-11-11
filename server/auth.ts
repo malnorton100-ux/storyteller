@@ -108,6 +108,7 @@ const PUBLIC_API = [
   /^\/api\/stripe\/webhook$/,
   /^\/api\/stripe\/publishable-key$/,
   /^\/api\/stripe\/products$/,
+  /^\/api\/public-info$/,
 ];
 
 export async function setupAuth(app: Express) {
@@ -267,6 +268,15 @@ export async function setupAuth(app: Express) {
       console.error("Reset password error:", err);
       res.status(500).json({ error: "Could not reset your password. Please try again." });
     }
+  });
+
+  // Business details shown on the privacy and terms pages (set in Railway).
+  app.get("/api/public-info", (_req, res) => {
+    res.json({
+      businessName: process.env.BUSINESS_NAME || "Storyteller",
+      abn: process.env.ABN || "",
+      contactEmail: process.env.CONTACT_EMAIL || "",
+    });
   });
 
   app.get("/api/auth/me", async (req, res) => {
