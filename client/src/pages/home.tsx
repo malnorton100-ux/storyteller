@@ -31,7 +31,7 @@ export default function Home() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="relative w-full h-80 md:h-96 lg:h-[28rem] bg-gradient-to-br from-amber-700 via-orange-800 to-stone-900">
+      <div className="relative w-full h-80 md:h-96 lg:h-[28rem] bg-gradient-to-br from-[#B5502A] via-[#7A2E16] to-[#2B2118]">
         <img
           src={heroImg}
           alt=""
@@ -51,7 +51,7 @@ export default function Home() {
           </p>
           <div className="flex flex-wrap gap-3 justify-center">
             <Link href="/record">
-              <Button size="lg" data-testid="button-hero-record">
+              <Button size="lg" className="bg-[#F08A62] text-[#1C1814] border-[#F08A62] font-semibold" data-testid="button-hero-record">
                 <Mic className="mr-2 h-4 w-4" />
                 Tell Your Story
               </Button>
