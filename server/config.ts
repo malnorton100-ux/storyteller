@@ -48,6 +48,16 @@ export const AUDIO_MODEL = process.env.OPENAI_AUDIO_MODEL || "gpt-audio";
 export const TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
 
 /**
+ * "Your own voice" narration: a Replicate model that speaks text in the voice of a
+ * short reference recording. Uses the same REPLICATE_API_TOKEN as the video clips.
+ * VOICE_CLONE_INPUT can override the model's input names (JSON with {{text}},
+ * {{audio}} and {{language}} placeholders) if you switch to a different model.
+ */
+export const VOICE_CLONE_MODEL = process.env.VOICE_CLONE_MODEL || "resemble-ai/chatterbox-multilingual";
+export const VOICE_CLONE_INPUT = process.env.VOICE_CLONE_INPUT || "";
+export const VOICE_CLONE_LANGUAGE = process.env.VOICE_CLONE_LANGUAGE || "en";
+
+/**
  * Pull the JSON array/object out of an AI reply, even if it is wrapped in
  * ```json fences or has a sentence before/after it.
  */

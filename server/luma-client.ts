@@ -1,4 +1,4 @@
-import { PRIVATE_DATA_DIR, VIDEO_MODEL, VIDEO_INPUT_TEMPLATE, VIDEO_CLIP_SECONDS } from "./config";
+import { PRIVATE_DATA_DIR, VIDEO_MODEL, VIDEO_INPUT_TEMPLATE, VIDEO_CLIP_SECONDS, VOICE_CLONE_MODEL, VOICE_CLONE_INPUT, VOICE_CLONE_LANGUAGE } from "./config";
 import Replicate from "replicate";
 import fs from "fs";
 import path from "path";
@@ -270,4 +270,51 @@ export async function validateAndFixToken(): Promise<boolean> {
     console.log("[Replicate] No working token found in environment");
     return false;
   }
+}
+
+
+// ── Own-voice narration ──────────────────────────────────────────────────
+function buildVoiceInput(text: string, refAudio: Buffer): Record<string, any> {
+  const vars: Record<string, any> = { text, audio: refAudio, language: VOICE_CLONE_LANGUAGE };
+  if (VOICE_CLONE_INPUT) {
+    try {
+      return fillTemplate(JSON.parse(VOICE_CLONE_INPUT), vars);
+    } catch (e: any) {
+      throw new Error(`VOICE_CLONE_INPUT is not valid JSON: ${e.message}`);
+    }
+  }
+  if (VOICE_CLONE_MODEL.includes("chatterbox-multilingual")) {
+    // cfg_weight a bit lower = slower, calmer delivery - suits storytelling.
+    return { text_to_synthesize: text, reference_audio: refAudio, language_id: VOICE_CLONE_LANGUAGE, cfg_weight: 0.4, exaggeration: 0.5 };
+  }
+  if (VOICE_CLONE_MODEL.includes("chatterbox")) {
+    return { prompt: text, audio_prompt: refAudio, cfg_weight: 0.4, exaggeration: 0.5 };
+  }
+  return { text, reference_audio: refAudio };
+}
+
+/**
+ * Speak `text` in the voice from `refAudio` (a short clean WAV of the storyteller).
+ * Returns the audio file's contents. Keep each `text` under ~300 characters.
+ */
+export async function speakInOwnVoice(text: string, refAudio: Buffer): Promise<Buffer> {
+  const client = getClient();
+  const prediction = await client.predictions.create({ model: VOICE_CLONE_MODEL, input: buildVoiceInput(text, refAudio) } as any);
+
+  for (let attempts = 0; attempts < 60; attempts++) {
+    const updated = await client.predictions.get(prediction.id);
+    if (updated.status === "succeeded") {
+      const out: any = updated.output;
+      const url = typeof out === "string" ? out : Array.isArray(out) ? (typeof out[0] === "string" ? out[0] : out[0]?.url) : out?.url || out?.audio || out?.audio_out;
+      if (!url || typeof url !== "string") throw new Error(`No audio in voice output: ${JSON.stringify(out).slice(0, 200)}`);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Voice download failed: HTTP ${res.status}`);
+      return Buffer.from(await res.arrayBuffer());
+    }
+    if (updated.status === "failed" || updated.status === "canceled") {
+      throw new Error(`Voice generation failed: ${updated.error || "unknown error"}`);
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error("Voice generation timed out");
 }

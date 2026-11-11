@@ -61,3 +61,12 @@ Defaults are in `server/config.ts`. Override in Railway → Variables when OpenA
 | `EMAIL_FROM` | e.g. `Storyteller <hello@yourdomain.com>` (needs the domain verified in Resend; without it Resend's test sender only delivers to your own Resend sign-up email) |
 
 Other movie settings: `VIDEO_CLIP_SECONDS` (5 or 10, default 10), `VIDEO_PARALLEL_SCENES` (default 4), `VIDEO_MAX_SIDE` (default 960).
+
+## Own-voice narration
+If a storyteller has recorded a voice sample in their profile, movie narration is spoken in **their own voice** using Replicate (same `REPLICATE_API_TOKEN` as the video clips). If it fails, it falls back to the AI voice they picked (or "fable").
+
+| Variable | Default | Note |
+|---|---|---|
+| `VOICE_CLONE_MODEL` | `resemble-ai/chatterbox-multilingual` | any Replicate voice-cloning model |
+| `VOICE_CLONE_LANGUAGE` | `en` | language code for narration |
+| `VOICE_CLONE_INPUT` | *(preset)* | JSON of the model's inputs with `{{text}}`, `{{audio}}`, `{{language}}` placeholders, if you switch model |

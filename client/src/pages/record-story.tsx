@@ -38,7 +38,8 @@ export default function RecordStory() {
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      const recType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "";
+      const recorder = new MediaRecorder(stream, recType ? { mimeType: recType } : undefined);
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
@@ -71,7 +72,7 @@ export default function RecordStory() {
 
     return new Promise<void>((resolve) => {
       recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         recorder.stream.getTracks().forEach((t) => t.stop());
         setIsRecording(false);
         setIsTranscribing(true);

@@ -37,13 +37,14 @@ function VoiceRecorder({ profileId, existingSampleUrl, onSaved }: {
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      const recType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "";
+      const recorder = new MediaRecorder(stream, recType ? { mimeType: recType } : undefined);
       chunksRef.current = [];
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((t) => t.stop());
@@ -112,7 +113,11 @@ function VoiceRecorder({ profileId, existingSampleUrl, onSaved }: {
     <div className="space-y-3">
       <Label>Your Voice Recording</Label>
       <p className="text-xs text-muted-foreground">
-        Record a short sample of your voice (10-30 seconds). This can be used to narrate your story movies with your own voice.
+        Record 15–30 seconds of yourself talking, and your story movies will be narrated in your own voice.
+        Somewhere quiet works best: tell us about your favourite place as a kid, in your normal storytelling voice.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Only record your own voice, or someone who has said yes to it being used.
       </p>
 
       {existingSampleUrl && !audioBlob && (
