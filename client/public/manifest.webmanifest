@@ -4,7 +4,7 @@
   "description": "Turn your life stories into illustrated storybooks and movies for the family.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#2E0B06",
+  "background_color": "#8A3E1E",
   "theme_color": "#A63D1C",
   "icons": [
     {
