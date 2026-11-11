@@ -7,9 +7,9 @@ export type UnlockNeeds = "pictures" | "movie";
 type Product = { id: string; price_id: string; unit_amount: number | null; currency?: string; metadata?: { type?: string } };
 
 const INFO: Record<string, { title: string; text: string; icon: typeof Film }> = {
-  video_download: { title: "Movie", text: "Your story as a movie with you as the star. Up to 3 goes, and you keep the download.", icon: Film },
-  pdf_download: { title: "Storybook", text: "More storybook pictures (up to 5 goes) and a printable book to keep.", icon: BookOpen },
-  bundle_download: { title: "Everything", text: "The movie AND the storybook: pictures, movie and printable book.", icon: Sparkles },
+  video_download: { title: "Movie", text: "Your story as a movie with you as the star, narrated in your voice. Up to 2 goes, and you keep the download.", icon: Film },
+  pdf_download: { title: "Storybook", text: "More storybook pictures (up to 3 goes) and a printable book to keep.", icon: BookOpen },
+  bundle_download: { title: "Everything", text: "The storybook AND the movie: pictures, printable book and movie. Save $4.99.", icon: Sparkles },
 };
 
 const ORDER: Record<UnlockNeeds, string[]> = {

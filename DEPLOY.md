@@ -78,8 +78,8 @@ If a storyteller has recorded a voice sample in their profile, movie narration i
 
 | Variable | Default | Note |
 |---|---|---|
-| `PICTURE_RUNS_PER_PURCHASE` | `5` | picture goes per purchase |
-| `MOVIE_RUNS_PER_PURCHASE` | `3` | movie goes per Movie/Bundle purchase |
+| `PICTURE_RUNS_PER_PURCHASE` | `3` | picture goes per purchase |
+| `MOVIE_RUNS_PER_PURCHASE` | `2` | movie goes per Movie/Bundle purchase |
 | `DAILY_TEXT_AI_LIMIT` | `150` | cheap AI calls (transcribe, story helper, titles) per account per day |
 
 ## Password reset emails
@@ -87,3 +87,6 @@ If a storyteller has recorded a voice sample in their profile, movie narration i
 
 ## Voice recordings are private
 Voice samples are stored in `/data/private/voice-samples` and only play for their owner. Old public recordings are moved there automatically on start-up.
+
+## Prices (set automatically in Stripe on start-up)
+Storybook A$9.99, Movie A$14.99, Everything A$19.99. To change them, set `PRICE_STORYBOOK_CENTS`, `PRICE_MOVIE_CENTS`, `PRICE_EVERYTHING_CENTS` (e.g. `1499` = $14.99) in Railway and redeploy. Old prices are archived automatically.
