@@ -41,16 +41,16 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4">
         <Link href="/" className="flex items-center gap-2" data-testid="link-home-logo" onClick={handleNavClick}>
-          <BookOpen className="h-6 w-6 text-primary" />
+          <BookOpen className="h-7 w-7 text-primary" />
           <div>
-            <h1 className="text-lg font-bold tracking-tight">Storyteller</h1>
-            <p className="text-xs text-muted-foreground">Preserve your memories</p>
+            <h1 className="text-xl font-bold tracking-tight">Storyteller</h1>
+            <p className="text-sm text-muted-foreground">Preserve your memories</p>
           </div>
         </Link>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sm">Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => (
@@ -58,6 +58,7 @@ export function AppSidebar() {
                   <SidebarMenuButton
                     asChild
                     data-active={location === item.url}
+                    className="h-12 text-lg gap-3 [&>svg]:size-6"
                   >
                     <Link href={item.url} onClick={handleNavClick} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, '-')}`}>
                       <item.icon />
@@ -73,18 +74,17 @@ export function AppSidebar() {
       <SidebarFooter className="p-4 space-y-2">
         {user && (
           <div className="min-w-0" data-testid="text-signed-in-as">
-            <p className="text-sm font-medium truncate">{user.name || user.email}</p>
-            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            <p className="text-base font-medium truncate">{user.name || user.email}</p>
+            <p className="text-sm text-muted-foreground truncate">{user.email}</p>
           </div>
         )}
         <Button
           variant="outline"
-          size="sm"
-          className="w-full justify-start"
+          className="w-full justify-start h-12 text-lg"
           onClick={() => { handleNavClick(); logout(); }}
           data-testid="button-logout"
         >
-          <LogOut className="h-4 w-4 mr-2" />
+          <LogOut className="h-5 w-5 mr-2" />
           Log out
         </Button>
       </SidebarFooter>
