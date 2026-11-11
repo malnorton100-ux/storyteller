@@ -468,7 +468,7 @@ export default function StoryDetail() {
   }, [isGeneratingIllustrations, illustrationJobId, storyId, toast]);
 
   const selectedProfile = profiles?.find(p => p.id === selectedProfileId) || profiles?.[0];
-  const profileHasVoice = !!(selectedProfile?.voicePreference);
+  const profileHasVoice = !!(selectedProfile?.voicePreference || selectedProfile?.voiceSampleUrl);
 
   const generateVideoMutation = useMutation({
     mutationFn: async (style: string) => {
@@ -1060,7 +1060,9 @@ export default function StoryDetail() {
                       {profileHasVoice ? (
                         <p className="text-xs text-muted-foreground">
                           {enableNarration
-                            ? `Scenes will be narrated using the "${selectedProfile?.voicePreference}" AI voice from ${selectedProfile?.name}'s profile.`
+                            ? selectedProfile?.voiceSampleUrl
+                              ? `Scenes will be narrated in ${selectedProfile?.name}'s own voice.`
+                              : `Scenes will be narrated using the "${selectedProfile?.voicePreference}" AI voice from ${selectedProfile?.name}'s profile.`
                             : "Narration is off. The movie will be silent."}
                         </p>
                       ) : (

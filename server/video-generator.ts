@@ -1,9 +1,10 @@
-import { PUBLIC_DATA_DIR, publicBaseUrl } from "./config";
+import { PUBLIC_DATA_DIR, PRIVATE_DATA_DIR, publicBaseUrl } from "./config";
+import crypto from "crypto";
 import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import fs from "fs";
-import { animateImageToVideo, downloadVideo, isLumaConfigured } from "./luma-client";
+import { animateImageToVideo, downloadVideo, isLumaConfigured, speakInOwnVoice } from "./luma-client";
 import { textToSpeech } from "./replit_integrations/audio/client";
 
 const execAsync = promisify(exec);
@@ -85,19 +86,126 @@ async function generateAIVideoClip(
   return clipPath;
 }
 
+type StockVoice = "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
+
+/** Split text into pieces of at most `max` characters, breaking at sentence ends where possible. */
+function splitForVoice(text: string, max = 280): string[] {
+  const sentences = text.replace(/\s+/g, " ").trim().match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [text];
+  const parts: string[] = [];
+  let cur = "";
+  for (const raw of sentences) {
+    const sen = raw.trim();
+    if (!sen) continue;
+    if (sen.length > max) {
+      // Very long sentence: break at commas, then at spaces.
+      if (cur) { parts.push(cur); cur = ""; }
+      let rest = sen;
+      while (rest.length > max) {
+        let cut = rest.lastIndexOf(", ", max);
+        if (cut < max / 3) cut = rest.lastIndexOf(" ", max);
+        if (cut <= 0) cut = max;
+        parts.push(rest.slice(0, cut + 1).trim());
+        rest = rest.slice(cut + 1).trim();
+      }
+      cur = rest;
+      continue;
+    }
+    if ((cur + " " + sen).trim().length > max) { parts.push(cur); cur = sen; }
+    else cur = (cur + " " + sen).trim();
+  }
+  if (cur) parts.push(cur);
+  return parts.filter(Boolean);
+}
+
+/**
+ * Turn the storyteller's voice recording (any phone format) into a clean reference
+ * clip: mono WAV, 24kHz, the first ~15 seconds, quiet start trimmed, level evened out.
+ */
+async function prepareVoiceReference(voiceSampleUrl: string, tempDir: string): Promise<Buffer | null> {
+  const src = path.join(PUBLIC_DATA_DIR, voiceSampleUrl.replace(/^\/+/, ""));
+  if (!fs.existsSync(src)) {
+    console.warn(`[VideoGen] Voice sample not found at ${src}`);
+    return null;
+  }
+  const out = path.join(tempDir, `voice-ref-${Date.now()}.wav`);
+  await execAsync(
+    `ffmpeg -y -i "${src}" -af "silenceremove=start_periods=1:start_threshold=-45dB,loudnorm=I=-18:TP=-2" -t 15 -ac 1 -ar 24000 "${out}"`,
+    { timeout: 60000 }
+  );
+  const buf = fs.readFileSync(out);
+  return buf.length > 20000 ? buf : null; // under ~0.5s of audio is no use
+}
+
+/** One scene's narration in the storyteller's own voice (cached, so preview + full movie share it). */
+async function ownVoiceNarration(caption: string, ref: Buffer, refKey: string, tempDir: string, i: number): Promise<string> {
+  const cacheDir = path.join(PRIVATE_DATA_DIR, "narration-cache");
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const key = crypto.createHash("sha1").update(refKey + "|" + caption).digest("hex");
+  const cached = path.join(cacheDir, `${key}.wav`);
+  if (fs.existsSync(cached)) return cached;
+
+  const pieces = splitForVoice(caption);
+  const piecePaths: string[] = [];
+  for (let p = 0; p < pieces.length; p++) {
+    const audio = await speakInOwnVoice(pieces[p], ref);
+    const raw = path.join(tempDir, `own-voice-${i}-${p}-${Date.now()}`);
+    fs.writeFileSync(raw, audio);
+    // Normalise each piece so they join cleanly.
+    const wav = `${raw}.wav`;
+    await execAsync(`ffmpeg -y -i "${raw}" -ac 1 -ar 24000 "${wav}"`, { timeout: 60000 });
+    piecePaths.push(wav);
+  }
+  if (piecePaths.length === 1) {
+    fs.copyFileSync(piecePaths[0], cached);
+  } else {
+    // Join the pieces with a short natural pause between them.
+    const inputs = piecePaths.map((pp) => `-i "${pp}"`).join(" ");
+    const chain = piecePaths.map((_, k) => `[${k}:a]apad=pad_dur=0.35[a${k}]`).join(";");
+    const labels = piecePaths.map((_, k) => `[a${k}]`).join("");
+    await execAsync(
+      `ffmpeg -y ${inputs} -filter_complex "${chain};${labels}concat=n=${piecePaths.length}:v=0:a=1[out]" -map "[out]" "${cached}"`,
+      { timeout: 120000 }
+    );
+  }
+  return cached;
+}
+
 async function generateNarrationAudio(
   captions: string[],
-  voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer",
+  narration: NarrationConfig,
   tempDir: string
 ): Promise<string[]> {
   const audioPaths: string[] = [];
+  const fallbackVoice: StockVoice = narration.voice || "fable";
+
+  // Their own voice first, if they recorded one and Replicate is set up.
+  let ref: Buffer | null = null;
+  if (narration.voiceSampleUrl && isLumaConfigured()) {
+    try {
+      ref = await prepareVoiceReference(narration.voiceSampleUrl, tempDir);
+      if (ref) console.log(`[VideoGen] Narrating in the storyteller's own voice`);
+    } catch (err: any) {
+      console.error(`[VideoGen] Couldn't prepare voice sample, using AI voice: ${err.message}`);
+    }
+  }
 
   for (let i = 0; i < captions.length; i++) {
     const caption = captions[i];
     console.log(`[VideoGen] Generating narration for scene ${i + 1}: "${caption.substring(0, 60)}..."`);
 
+    if (ref) {
+      try {
+        const p = await ownVoiceNarration(caption, ref, narration.voiceSampleUrl!, tempDir, i);
+        console.log(`[VideoGen] Narration ${i + 1} (own voice): ${(await probeClipDuration(p)).toFixed(1)}s`);
+        audioPaths.push(p);
+        continue;
+      } catch (err: any) {
+        console.error(`[VideoGen] Own-voice narration ${i + 1} failed, using AI voice: ${err.message}`);
+      }
+    }
+
     try {
-      const audioBuffer = await textToSpeech(caption, voice, "wav");
+      const audioBuffer = await textToSpeech(caption, fallbackVoice, "wav");
       const audioPath = path.join(tempDir, `narration-${i}-${Date.now()}.wav`);
       fs.writeFileSync(audioPath, audioBuffer);
 
@@ -352,7 +460,7 @@ export async function generatePreviewMovie(
   try {
     let narrationPaths: string[] | undefined;
     if (narration?.enabled) {
-      narrationPaths = await generateNarrationAudio(scenes.map((sc) => sc.caption), narration.voice, tempDir);
+      narrationPaths = await generateNarrationAudio(scenes.map((sc) => sc.caption), narration, tempDir);
     }
     const clips: string[] = [];
     for (let i = 0; i < scenes.length; i++) {
@@ -487,12 +595,12 @@ export async function generateVideoFromScenes(
   }
 
   let narrationPaths: string[] | undefined;
-  if (narration?.enabled && narration.voice) {
-    console.log(`[VideoGen] Generating narration with voice: ${narration.voice}`);
+  if (narration?.enabled && (narration.voice || narration.voiceSampleUrl)) {
+    console.log(`[VideoGen] Generating narration (${narration.voiceSampleUrl ? "own voice" : narration.voice})`);
     const captions = scenes
       .filter((_, i) => !failedScenes.includes(i + 1))
       .map(s => s.caption);
-    narrationPaths = await generateNarrationAudio(captions, narration.voice, tempDir);
+    narrationPaths = await generateNarrationAudio(captions, narration, tempDir);
   }
 
   try {

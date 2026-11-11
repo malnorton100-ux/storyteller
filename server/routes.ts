@@ -869,10 +869,11 @@ Return ONLY the finished story text.`,
 
           const narrationFor = () => {
             if (!(enableNarration && videoProfile)) return undefined;
-            const voice = videoProfile.voicePreference as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" | null;
-            if (!voice) return undefined;
-            console.log(`[VideoGen] Narration enabled with voice: ${voice}`);
-            return { enabled: true, voice, voiceSampleUrl: videoProfile.voiceSampleUrl || null };
+            const voice = (videoProfile.voicePreference || undefined) as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" | undefined;
+            const voiceSampleUrl = videoProfile.voiceSampleUrl || null;
+            if (!voice && !voiceSampleUrl) return undefined;
+            console.log(`[VideoGen] Narration enabled: ${voiceSampleUrl ? "own voice" : voice}`);
+            return { enabled: true, voice, voiceSampleUrl };
           };
 
           // FAST PATH: reuse the storybook pictures already made for this story
