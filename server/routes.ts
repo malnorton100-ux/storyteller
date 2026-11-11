@@ -9,6 +9,7 @@ import { sendEmail, movieReadyEmail, movieFailedEmail } from "./email";
 import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma-client";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { userId, userOwnsStory, isOwner } from "./auth";
+import { VOICE_DIR, voiceSampleUrlFor, voiceSamplePath, moveVoiceSamplesPrivate } from "./voice-samples";
 import { ensurePaywallSchema, claimPictureRun, claimMovieRun, getAllowance, mayPaintCover, dailyTextAiLimit } from "./paywall";
 import { PUBLIC_DATA_DIR, TEXT_MODEL, parseAiJson } from "./config";
 import express from "express";
@@ -121,6 +122,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   app.use(express.json({ limit: "50mb" }));
   await ensurePaywallSchema();
+  await moveVoiceSamplesPrivate();
   // Brake on the cheap AI helpers so one account can't hammer them all day.
   app.use(["/api/transcribe", "/api/enhance-story", "/api/story-helper", "/api/suggest-title", "/api/preview-voice"], dailyTextAiLimit);
   try { cleanUpVideoLeftovers(); } catch (e) { console.warn("[VideoGen] Cleanup skipped:", (e as Error).message); }
@@ -1738,6 +1740,21 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
     }
   });
 
+  // Play the owner's own voice recording (the ownership check runs before this).
+  app.get("/api/storyteller-profiles/:id/voice-sample", async (req, res) => {
+    try {
+      const profile = await storage.getStorytellerProfile(parseInt(req.params.id));
+      const file = voiceSamplePath(profile?.voiceSampleUrl);
+      if (!file || !fs.existsSync(file)) return res.status(404).json({ error: "No recording" });
+      res.setHeader("Cache-Control", "private, no-store");
+      res.type(file.endsWith(".mp4") || file.endsWith(".m4a") ? "audio/mp4" : "audio/webm");
+      fs.createReadStream(file).pipe(res);
+    } catch (error) {
+      console.error("Error playing voice sample:", error);
+      res.status(500).json({ error: "Could not play the recording" });
+    }
+  });
+
   app.patch("/api/storyteller-profiles/:id/voice", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -1754,17 +1771,21 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
 
       if (voiceSample) {
         const audioBuffer = Buffer.from(voiceSample, "base64");
-        const audioDir = path.join(PUBLIC_DATA_DIR, "audio", "voice-samples");
-        if (!fs.existsSync(audioDir)) {
-          fs.mkdirSync(audioDir, { recursive: true });
-        }
+        // Private folder - never served by link (see voice-samples.ts).
+        fs.mkdirSync(VOICE_DIR, { recursive: true });
         const filename = `voice-${id}-${Date.now()}.webm`;
-        const audioPath = path.join(audioDir, filename);
-        fs.writeFileSync(audioPath, audioBuffer);
-        updates.voiceSampleUrl = `/audio/voice-samples/${filename}`;
+        fs.writeFileSync(path.join(VOICE_DIR, filename), audioBuffer);
+        // Remove the previous recording.
+        const before = await storage.getStorytellerProfile(id);
+        const oldPath = voiceSamplePath(before?.voiceSampleUrl);
+        if (oldPath && fs.existsSync(oldPath)) { try { fs.unlinkSync(oldPath); } catch {} }
+        updates.voiceSampleUrl = voiceSampleUrlFor(id, filename);
       }
 
       if (voiceSample === null) {
+        const before = await storage.getStorytellerProfile(id);
+        const oldPath = voiceSamplePath(before?.voiceSampleUrl);
+        if (oldPath && fs.existsSync(oldPath)) { try { fs.unlinkSync(oldPath); } catch {} }
         updates.voiceSampleUrl = null;
       }
 

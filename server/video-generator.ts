@@ -4,6 +4,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import fs from "fs";
+import { voiceSamplePath } from "./voice-samples";
 import { animateImageToVideo, downloadVideo, isLumaConfigured, speakInOwnVoice } from "./luma-client";
 import { textToSpeech } from "./replit_integrations/audio/client";
 
@@ -122,8 +123,8 @@ function splitForVoice(text: string, max = 280): string[] {
  * clip: mono WAV, 24kHz, the first ~15 seconds, quiet start trimmed, level evened out.
  */
 async function prepareVoiceReference(voiceSampleUrl: string, tempDir: string): Promise<Buffer | null> {
-  const src = path.join(PUBLIC_DATA_DIR, voiceSampleUrl.replace(/^\/+/, ""));
-  if (!fs.existsSync(src)) {
+  const src = voiceSamplePath(voiceSampleUrl);
+  if (!src || !fs.existsSync(src)) {
     console.warn(`[VideoGen] Voice sample not found at ${src}`);
     return null;
   }

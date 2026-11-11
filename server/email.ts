@@ -66,3 +66,15 @@ export function movieFailedEmail(name: string | null, storyTitle: string, storyI
     ),
   };
 }
+
+export function passwordResetEmail(name: string | null, token: string) {
+  const url = `${publicBaseUrl()}/reset-password?token=${token}`;
+  return {
+    subject: "Reset your Storyteller password",
+    html: layout(
+      `${name ? "Hi " + esc(name) + "," : "Hi,"}`,
+      `Tap the button below to choose a new password. The link works for 1 hour.<br><br>If you didn't ask for this, you can ignore this email - your password won't change.`,
+      { label: "Choose a new password", url }
+    ),
+  };
+}

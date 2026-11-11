@@ -81,3 +81,9 @@ If a storyteller has recorded a voice sample in their profile, movie narration i
 | `PICTURE_RUNS_PER_PURCHASE` | `5` | picture goes per purchase |
 | `MOVIE_RUNS_PER_PURCHASE` | `3` | movie goes per Movie/Bundle purchase |
 | `DAILY_TEXT_AI_LIMIT` | `150` | cheap AI calls (transcribe, story helper, titles) per account per day |
+
+## Password reset emails
+"Forgot your password?" emails a 1-hour link through Resend. Needs `RESEND_API_KEY`, and `EMAIL_FROM` on a domain you've verified in Resend (e.g. `Storyteller <hello@yourdomain.com.au>`). Until a domain is verified, Resend only delivers to your own address.
+
+## Voice recordings are private
+Voice samples are stored in `/data/private/voice-samples` and only play for their owner. Old public recordings are moved there automatically on start-up.
