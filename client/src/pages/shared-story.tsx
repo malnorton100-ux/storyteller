@@ -63,10 +63,10 @@ export default function SharedStory() {
             <CardContent className="p-5">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
-                  <Gift className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  <Gift className="h-5 w-5 text-primary" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">A Gift For You</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-primary">A Gift For You</p>
                   <p className="text-sm text-foreground leading-relaxed italic" data-testid="text-gift-message">"{story.giftMessage}"</p>
                 </div>
               </div>
@@ -76,9 +76,9 @@ export default function SharedStory() {
 
         <div className="text-center space-y-3">
           <div className="flex items-center justify-center gap-2">
-            <Heart className="h-4 w-4 text-amber-500" />
-            <span className="text-xs font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">A Shared Story</span>
-            <Heart className="h-4 w-4 text-amber-500" />
+            <Heart className="h-4 w-4 text-primary" />
+            <span className="text-xs font-medium uppercase tracking-wider text-primary">A Shared Story</span>
+            <Heart className="h-4 w-4 text-primary" />
           </div>
           <h1 className="text-3xl md:text-4xl font-serif font-bold text-foreground" data-testid="text-story-title">{story.title}</h1>
           {(story.era || story.category) && (
@@ -153,7 +153,7 @@ export default function SharedStory() {
         <div className="text-center space-y-4 pt-4 pb-8">
           <div className="w-12 h-px bg-amber-300 dark:bg-amber-700 mx-auto" />
           <p className="text-xs text-muted-foreground">
-            Shared with love via <span className="font-semibold text-amber-600 dark:text-amber-400">Storyteller</span>
+            Shared with love via <span className="font-semibold text-primary">Storyteller</span>
           </p>
           <Link href="/">
             <Button variant="outline" size="sm" data-testid="button-create-your-own">

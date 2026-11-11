@@ -1153,7 +1153,7 @@ export default function StoryDetail() {
                             : "Narration is off. The movie will be silent."}
                         </p>
                       ) : (
-                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                        <p className="text-xs text-primary">
                           Set up a voice in your <a href="/profile" className="underline">storyteller profile</a> to enable narration.
                         </p>
                       )}
@@ -1623,7 +1623,7 @@ export default function StoryDetail() {
                           <div className="flex items-center gap-2">
                             {productType === "pdf_download" ? <FileText className="h-5 w-5 text-blue-500" /> :
                              productType === "video_download" ? <Video className="h-5 w-5 text-purple-500" /> :
-                             <ShoppingCart className="h-5 w-5 text-amber-500" />}
+                             <ShoppingCart className="h-5 w-5 text-primary" />}
                             <h3 className="font-semibold text-sm">{product.name}</h3>
                           </div>
                           <p className="text-xs text-muted-foreground">{product.description}</p>
