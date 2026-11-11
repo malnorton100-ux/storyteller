@@ -26,7 +26,7 @@ const STEPS = [
   {
     icon: Heart,
     title: "Share it",
-    text: "Send it to the kids and grandkids so they can see who you really were.",
+    text: "Share it with family and friends so they can see the moment for themselves.",
   },
 ];
 
@@ -130,7 +130,7 @@ export default function AuthPage() {
               Storyteller
             </h1>
             <p className="font-serif text-xl sm:text-2xl text-muted-foreground leading-snug" data-testid="text-hero-byline">
-              Your life story, made into a movie for the grandkids.
+              Tell your story. We'll make the movie.
             </p>
           </div>
 
@@ -174,9 +174,9 @@ export default function AuthPage() {
       <section className="px-5 py-10 bg-primary/5">
         <div className="max-w-2xl mx-auto text-center space-y-2">
           <p className="font-serif text-2xl leading-snug">
-            The grandkids ask, "What did you do when you were little?"
+            Everyone has a story worth telling.
           </p>
-          <p className="font-serif text-2xl font-bold text-primary">Now you can show them.</p>
+          <p className="font-serif text-2xl font-bold text-primary">Now you can watch yours.</p>
         </div>
       </section>
 
