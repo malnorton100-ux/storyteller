@@ -43,7 +43,7 @@ export default function Home() {
             Storyteller
           </h1>
           <p className="text-white/90 text-lg md:text-xl lg:text-2xl max-w-xl mb-1 font-medium">
-            Your life story, made into a movie for the grandkids.
+            Tell your story. We'll make the movie.
           </p>
           <p className="text-white/80 text-sm md:text-base max-w-lg mb-6">
             Talk or type a memory. We'll help you make it amazing, then turn it into a movie and storybook with you as the star.
@@ -98,7 +98,7 @@ export default function Home() {
                 </div>
                 <h3 className="font-semibold">3. Share it</h3>
                 <p className="text-sm text-muted-foreground">
-                  Send it to the kids and grandkids so they can see who you really were.
+                  Share it with family and friends so they can see the moment for themselves.
                 </p>
               </CardContent>
             </Card>

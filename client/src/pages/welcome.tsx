@@ -413,7 +413,7 @@ export default function Welcome({ onSkip }: { onSkip: () => void }) {
             <StepDots step={2} />
             <div className="text-center space-y-1">
               <h2 className="font-serif text-2xl font-bold">Tell us one memory</h2>
-              <p className="text-base text-foreground/75">Just talk, like you're telling the grandkids. A minute is plenty.</p>
+              <p className="text-base text-foreground/75">Just talk, like you're telling a friend. A minute is plenty.</p>
             </div>
 
             <div className="space-y-2">
