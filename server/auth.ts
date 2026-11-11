@@ -7,6 +7,7 @@ import { z } from "zod";
 import { pool } from "./db";
 import { storage } from "./storage";
 import type { Story } from "@shared/schema";
+import { sendEmail, passwordResetEmail } from "./email";
 
 declare module "express-session" {
   interface SessionData {
@@ -56,6 +57,7 @@ async function ensureAuthSchema() {
     `ALTER TABLE stories ADD COLUMN IF NOT EXISTS user_id varchar REFERENCES users(id) ON DELETE CASCADE`,
     `ALTER TABLE storyteller_profiles ADD COLUMN IF NOT EXISTS user_id varchar REFERENCES users(id) ON DELETE CASCADE`,
     `ALTER TABLE illustrations ADD COLUMN IF NOT EXISTS page_text text`,
+    `CREATE TABLE IF NOT EXISTS password_resets ("token_hash" text PRIMARY KEY, "user_id" varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE, "expires_at" timestamp NOT NULL, "used" boolean NOT NULL DEFAULT false)`,
   ];
   for (const sql of statements) {
     try {
@@ -197,6 +199,74 @@ export async function setupAuth(app: Express) {
       res.clearCookie("lw.sid");
       res.json({ ok: true });
     });
+  });
+
+  // ── Forgot password ──────────────────────────────────────────────────
+  // Always answers "check your email" so nobody can find out who has an account.
+  const resetRequests = new Map<string, { count: number; first: number }>();
+  app.post("/api/auth/forgot", async (req, res) => {
+    const parsed = z.object({ email: z.string().trim().toLowerCase().email() }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Please enter a valid email" });
+    const { email } = parsed.data;
+    const ok = () => res.json({ ok: true, message: "If that email has an account, we've sent a link to reset the password. Check your inbox (and junk folder)." });
+
+    // At most 3 reset emails per address per hour.
+    const r = resetRequests.get(email);
+    if (r && Date.now() - r.first < 60 * 60 * 1000) {
+      if (r.count >= 3) return ok();
+      r.count++;
+    } else resetRequests.set(email, { count: 1, first: Date.now() });
+
+    try {
+      const user = await storage.getUserByEmail(email);
+      if (!user) return ok();
+      const token = crypto.randomBytes(32).toString("hex");
+      const hash = crypto.createHash("sha256").update(token).digest("hex");
+      await pool.query(`DELETE FROM password_resets WHERE user_id = $1`, [user.id]);
+      await pool.query(
+        `INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES ($1, $2, NOW() + INTERVAL '1 hour')`,
+        [hash, user.id]
+      );
+      const mail = passwordResetEmail(user.name, token);
+      const sent = await sendEmail(user.username, mail.subject, mail.html);
+      if (!sent) console.warn("[auth] Reset email not sent - check RESEND_API_KEY / EMAIL_FROM");
+      return ok();
+    } catch (err) {
+      console.error("Forgot password error:", err);
+      return ok();
+    }
+  });
+
+  app.post("/api/auth/reset", async (req, res) => {
+    const parsed = z
+      .object({
+        token: z.string().regex(/^[a-f0-9]{64}$/, "This reset link isn't valid. Please ask for a new one."),
+        password: z.string().min(8, "Password must be at least 8 characters").max(200),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+    const { token, password } = parsed.data;
+    try {
+      const hash = crypto.createHash("sha256").update(token).digest("hex");
+      const found = await pool.query(
+        `UPDATE password_resets SET used = true WHERE token_hash = $1 AND used = false AND expires_at > NOW() RETURNING user_id`,
+        [hash]
+      );
+      const uid = found.rows[0]?.user_id as string | undefined;
+      if (!uid) return res.status(400).json({ error: "This reset link has expired or already been used. Please ask for a new one." });
+
+      await pool.query(`UPDATE users SET password = $1 WHERE id = $2`, [await hashPassword(password), uid]);
+      await pool.query(`DELETE FROM password_resets WHERE user_id = $1`, [uid]);
+      // Log out everywhere else (e.g. a lost phone), then log in here.
+      await pool.query(`DELETE FROM "session" WHERE sess->>'userId' = $1`, [uid]);
+      const user = await storage.getUser(uid);
+      if (!user) return res.status(400).json({ error: "Account not found" });
+      await startSession(req, uid);
+      res.json(publicUser(user));
+    } catch (err) {
+      console.error("Reset password error:", err);
+      res.status(500).json({ error: "Could not reset your password. Please try again." });
+    }
   });
 
   app.get("/api/auth/me", async (req, res) => {

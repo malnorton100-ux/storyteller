@@ -22,6 +22,7 @@ import RecordStory from "@/pages/record-story";
 import Profile from "@/pages/profile";
 import Timeline from "@/pages/timeline";
 import SharedStory from "@/pages/shared-story";
+import ResetPassword from "@/pages/reset-password";
 import Prompts from "@/pages/prompts";
 
 function Router() {
@@ -66,6 +67,11 @@ function Shell() {
         </Switch>
       </main>
     );
+  }
+
+  // Password reset link from email - works whether or not someone is logged in.
+  if (location.startsWith("/reset-password")) {
+    return <main className="h-screen overflow-y-auto"><ResetPassword /></main>;
   }
 
   if (isLoading) {

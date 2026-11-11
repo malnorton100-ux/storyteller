@@ -74,7 +74,8 @@ function ShowcaseVideo() {
 
 export default function AuthPage() {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("register");
+  const [mode, setMode] = useState<"login" | "register" | "forgot">("register");
+  const [notice, setNotice] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -93,8 +94,21 @@ export default function AuthPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     setBusy(true);
     try {
+      if (mode === "forgot") {
+        const res = await fetch("/api/auth/forgot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Something went wrong. Please try again.");
+        setNotice(data.message || "Check your email for a link to reset your password.");
+        return;
+      }
       if (isRegister) await register({ name, email, password });
       else await login({ email, password });
     } catch (err: any) {
@@ -185,12 +199,12 @@ export default function AuthPage() {
         <div className="w-full max-w-sm mx-auto space-y-6">
           <div className="space-y-1 text-center">
             <h2 className="font-serif text-2xl font-bold" data-testid="text-auth-title">
-              {isRegister ? "Start your first story" : "Welcome back"}
+              {isRegister ? "Start your first story" : mode === "forgot" ? "Reset your password" : "Welcome back"}
             </h2>
             <p className="text-sm text-muted-foreground">
               {isRegister
                 ? "It takes about 5 minutes. Your stories stay private until you choose to share them."
-                : "Log in to see your stories."}
+                : mode === "forgot" ? "No worries, it happens to everyone." : "Log in to see your stories."}
             </p>
           </div>
 
@@ -207,6 +221,7 @@ export default function AuthPage() {
                   <Label htmlFor="email">Email</Label>
                   <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required data-testid="input-email" />
                 </div>
+                {mode !== "forgot" && (
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
                   <Input
@@ -220,7 +235,24 @@ export default function AuthPage() {
                     data-testid="input-password"
                   />
                   {isRegister && <p className="text-xs text-muted-foreground">At least 8 characters.</p>}
+                  {mode === "login" && (
+                    <button
+                      type="button"
+                      className="text-sm text-primary hover:underline"
+                      onClick={() => { setMode("forgot"); setError(null); setNotice(null); }}
+                      data-testid="button-forgot-password"
+                    >
+                      Forgot your password?
+                    </button>
+                  )}
                 </div>
+                )}
+                {mode === "forgot" && (
+                  <p className="text-sm text-muted-foreground">Type the email you signed up with and we'll send you a link to choose a new password.</p>
+                )}
+                {notice && (
+                  <p className="text-sm text-green-700 dark:text-green-400" role="status" data-testid="text-auth-notice">{notice}</p>
+                )}
 
                 {error && (
                   <p className="text-sm text-destructive" role="alert" data-testid="text-auth-error">{error}</p>
@@ -228,21 +260,21 @@ export default function AuthPage() {
 
                 <Button type="submit" className="w-full h-11 text-base" disabled={busy} data-testid="button-auth-submit">
                   {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  {isRegister ? "Start my story" : "Log in"}
+                  {isRegister ? "Start my story" : mode === "forgot" ? "Send reset link" : "Log in"}
                 </Button>
               </form>
             </CardContent>
           </Card>
 
           <p className="text-center text-sm text-muted-foreground">
-            {isRegister ? "Already have an account?" : "New here?"}{" "}
+            {isRegister ? "Already have an account?" : mode === "forgot" ? "Remembered it?" : "New here?"}{" "}
             <button
               type="button"
               className="text-primary font-medium hover:underline"
-              onClick={() => { setMode(isRegister ? "login" : "register"); setError(null); }}
+              onClick={() => { setMode(isRegister || mode === "forgot" ? "login" : "register"); setError(null); setNotice(null); }}
               data-testid="button-auth-switch"
             >
-              {isRegister ? "Log in" : "Create an account"}
+              {isRegister || mode === "forgot" ? "Log in" : "Create an account"}
             </button>
           </p>
         </div>
