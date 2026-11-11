@@ -233,6 +233,19 @@ function StorySlideshow({ illustrations, onViewImage, onDelete, storyId, indexOf
   );
 }
 
+
+/** The server's own reason from an apiRequest error ("500: {\"error\":\"...\"}"). */
+function serverReason(err: unknown): string {
+  const msg = String((err as Error)?.message || "");
+  try {
+    const body = JSON.parse(msg.slice(msg.indexOf("{")));
+    if (body?.error) return String(body.error);
+  } catch {}
+  if (/^5\d\d/.test(msg)) return "The server had a problem. Please try again in a moment.";
+  if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) return "Couldn't reach the server. Check your internet and try again.";
+  return msg.slice(0, 200) || "Please try again in a moment.";
+}
+
 export default function StoryDetail() {
   const [, params] = useRoute("/stories/:id");
   const [, navigate] = useLocation();
@@ -482,7 +495,7 @@ export default function StoryDetail() {
     },
     onError: (err) => {
       if (showUnlockFrom402(err, "pictures")) { setDialogOpen(false); return; }
-      toast({ title: "Generation failed", description: "Please try again in a moment.", variant: "destructive" });
+      toast({ title: "Generation failed", description: serverReason(err), variant: "destructive" });
     },
   });
 
@@ -537,7 +550,7 @@ export default function StoryDetail() {
     },
     onError: (err) => {
       if (showUnlockFrom402(err, "movie")) { setVideoDialogOpen(false); return; }
-      toast({ title: "Generation failed", description: "Please try again in a moment.", variant: "destructive" });
+      toast({ title: "Generation failed", description: serverReason(err), variant: "destructive" });
     },
   });
 

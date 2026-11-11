@@ -68,6 +68,20 @@ async function generateCoverForStory(storyId: number, title: string, content: st
   console.log(`Cover generated for story ${storyId}: ${coverUrl}`);
 }
 
+
+/** Turn an AI/server error into a plain-English reason the app can show. */
+function friendlyAiError(error: any): string {
+  const status = error?.status || error?.response?.status;
+  const code = error?.code || error?.error?.code || "";
+  const msg = String(error?.message || error || "");
+  if (status === 401 || /api key|incorrect api key|missing-openai-key/i.test(msg)) return "The OpenAI key isn't working. Check OPENAI_API_KEY in Railway.";
+  if (code === "insufficient_quota" || /quota|billing|credit/i.test(msg)) return "The OpenAI account is out of credit. Top it up at platform.openai.com → Billing.";
+  if (status === 429) return "OpenAI is busy right now. Please try again in a minute.";
+  if (code === "content_policy_violation" || /safety|content policy|moderation|rejected/i.test(msg)) return "The AI wouldn't make pictures for this story as written. Try the G rating, or change any details it might find unsuitable.";
+  if (status === 404 || /model .*does not exist|not found/i.test(msg)) return `The AI model isn't available: ${msg.slice(0, 160)}`;
+  return `Something went wrong: ${msg.slice(0, 200)}`;
+}
+
 /** A movie that takes longer than this is marked failed (and the user emailed) instead of spinning forever. */
 const MOVIE_TIME_LIMIT_MS = Number(process.env.MOVIE_TIME_LIMIT_MINUTES || 25) * 60 * 1000;
 function withTimeLimit<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -574,7 +588,7 @@ Respond in valid JSON format ONLY:
       console.error("Error generating illustrations:", error);
       if (refundPictures) await refundPictures().catch(() => {});
       if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to generate illustrations" });
+        res.status(500).json({ error: friendlyAiError(error) });
       }
     }
   });
@@ -1251,7 +1265,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
     } catch (error) {
       console.error("Error creating video:", error);
       if (refundMovie) await refundMovie().catch(() => {});
-      res.status(500).json({ error: "Failed to start video generation" });
+      res.status(500).json({ error: friendlyAiError(error) });
     }
   });
 
