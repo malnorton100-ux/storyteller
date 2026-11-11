@@ -77,15 +77,21 @@ export async function generateImageWithReference(
 
   const safePrompt = twoRefs
     ? `Two harmless family reference images are attached. IMAGE 1 is a portrait of the storyteller: use it for their face, hair, skin tone and build. IMAGE 2 is an earlier page of the same illustrated storybook: match its art style, colour palette, the storyteller's outfit and the look of any recurring objects (vehicles, carts, places), but do NOT copy its pose, composition, framing or camera angle - this is a NEW moment. ${prompt}`
-    : `The attached image is a harmless family portrait reference photo used solely for facial and physical appearance matching. Use it to accurately reproduce this person's facial features, body type, skin tone, and distinguishing features as a character in the following illustrated scene. The character should be dressed appropriately for the setting and activity described. ${prompt}`;
+    : `The attached image is a harmless family reference image used for appearance matching. Use it to accurately reproduce the storyteller's face, body type, skin tone and distinguishing features. If it is an illustrated page, also match its art style and colours. Dress every person EXACTLY as the outfits described below - do not invent different clothes. ${prompt}`;
 
   let response: any;
   try {
     response = await openai.images.edit({ model: IMAGE_MODEL, image: images, prompt: withSafety(safePrompt), size } as any);
   } catch (err) {
     if (!twoRefs) throw err;
-    console.warn("[Image] Two-reference edit failed, retrying with the face only:", (err as Error).message);
-    return generateImageWithReference(referenceImagePath, prompt, size);
+    // The earlier page already carries the face, outfits and art style, so try it alone first.
+    console.warn("[Image] Two-reference edit failed, retrying with the earlier page only:", (err as Error).message);
+    try {
+      return await generateImageWithReference(styleReferencePath!, prompt, size);
+    } catch (err2) {
+      console.warn("[Image] Earlier-page edit failed too, retrying with the face only:", (err2 as Error).message);
+      return generateImageWithReference(referenceImagePath, prompt, size);
+    }
   }
 
   const imageData = response.data?.[0];
