@@ -64,7 +64,7 @@ async function generateAIVideoClip(
   const action = (scene.action || scene.caption).replace(/\[STORYTELLER\]/g, "").slice(0, 600);
 
   // Describe what happens in THIS scene, and keep movement natural.
-  const prompt = `${scene.caption}. ${action} People move naturally and in the direction they are facing - walking forwards, never backwards. Realistic body movement, natural pace, faces stay consistent. Small natural motion in the surroundings (water, wind, light). ${camera} Warm, nostalgic, cinematic. No text.`;
+  const prompt = `${scene.caption}. ${action} People move naturally and in the direction they are facing - walking forwards, never backwards. Realistic body movement, natural pace, faces stay consistent. Small natural motion in the surroundings (water, wind, light). ${camera} Warm, nostalgic, cinematic. No text. Any child shown stays fully and modestly dressed; the camera never lingers on a child\'s body.`;
 
   // Send the picture itself (the Replicate client uploads it) rather than a link,
   // so it works even if Replicate can't reach this server's address.
