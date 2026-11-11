@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
+import { PricingSection } from "@/components/pricing-section";
 
 // Showcase movie shown at the top of the landing page.
 // Drop the file into client/public/showcase.mp4 (and optionally showcase.jpg as the poster).
@@ -184,13 +185,15 @@ export default function AuthPage() {
         </div>
       </section>
 
+      <PricingSection />
+
       {/* Why it matters */}
       <section className="px-5 py-10 bg-primary/5">
         <div className="max-w-2xl mx-auto text-center space-y-2">
           <p className="font-serif text-2xl leading-snug">
-            Everyone has a story worth telling.
+            The grandkids ask, "What did you do when you were little?"
           </p>
-          <p className="font-serif text-2xl font-bold text-primary">Now you can watch yours.</p>
+          <p className="font-serif text-2xl font-bold text-primary">Now you can show them.</p>
         </div>
       </section>
 

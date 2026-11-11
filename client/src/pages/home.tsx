@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { PricingSection } from "@/components/pricing-section";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -104,6 +105,8 @@ export default function Home() {
             </Card>
           </div>
         </section>
+
+        <div className="-mx-5"><PricingSection /></div>
 
         <section>
           <div className="flex items-center justify-between gap-1 mb-4">

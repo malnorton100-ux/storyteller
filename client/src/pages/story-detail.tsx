@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { StoryPlayer } from "@/components/story-player";
 import { WorkingBanner } from "@/components/working-banner";
 import { UnlockDialog, type UnlockNeeds } from "@/components/unlock-dialog";
+import { useStoryPrices, formatPrice } from "@/components/pricing-section";
 import { shareImages } from "@/lib/share-images";
 import type { Story, Illustration, StoryVideo, StorytellerProfile, Purchase, StoryPerspective } from "@shared/schema";
 import { Input } from "@/components/ui/input";
@@ -374,6 +375,7 @@ export default function StoryDetail() {
     },
     enabled: storyId > 0,
   });
+  const storyPrices = useStoryPrices();
   const [unlock, setUnlock] = useState<{ needs: UnlockNeeds; usedUp?: boolean } | null>(null);
   // Free first storybook: 2 pages only.
   const freeStorybookOnly = !!allowance && !allowance.owner && !allowance.picturesUnlocked && allowance.freeStorybook;
@@ -941,7 +943,11 @@ export default function StoryDetail() {
               <DialogTrigger asChild>
                 <Button variant="secondary" data-testid="button-create-illustration">
                   <Sparkles className="mr-2 h-4 w-4" />
-                  Illustration
+                  {freeStorybookOnly
+                    ? "Free storybook"
+                    : picturesBlocked() && !picturesBlocked()?.usedUp && storyPrices.storybook
+                      ? `🔒 Pictures · ${formatPrice(storyPrices.storybook)}`
+                      : "Illustration"}
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-h-[85vh] overflow-y-auto">
@@ -1058,7 +1064,9 @@ export default function StoryDetail() {
               <DialogTrigger asChild>
                 <Button data-testid="button-create-video">
                   <Film className="mr-2 h-4 w-4" />
-                  Story Movie
+                  {movieBlocked() && !movieBlocked()?.usedUp && storyPrices.movie
+                    ? `🔒 Movie · ${formatPrice(storyPrices.movie)}`
+                    : "Story Movie"}
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-h-[85vh] overflow-y-auto">
