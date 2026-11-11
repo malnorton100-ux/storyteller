@@ -174,9 +174,9 @@ export default function AuthPage() {
       <section className="px-5 py-10 bg-primary/5">
         <div className="max-w-2xl mx-auto text-center space-y-2">
           <p className="font-serif text-2xl leading-snug">
-            Everyone has a story worth telling.
+            The grandkids ask, "What did you do when you were little?"
           </p>
-          <p className="font-serif text-2xl font-bold text-primary">Now you can watch yours.</p>
+          <p className="font-serif text-2xl font-bold text-primary">Now you can show them.</p>
         </div>
       </section>
 
