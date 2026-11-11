@@ -9,6 +9,7 @@ import { sendEmail, movieReadyEmail, movieFailedEmail } from "./email";
 import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma-client";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { userId, userOwnsStory, isOwner } from "./auth";
+import { ensurePaywallSchema, claimPictureRun, claimMovieRun, getAllowance, mayPaintCover, dailyTextAiLimit } from "./paywall";
 import { PUBLIC_DATA_DIR, TEXT_MODEL, parseAiJson } from "./config";
 import express from "express";
 import crypto from "crypto";
@@ -81,6 +82,9 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   app.use(express.json({ limit: "50mb" }));
+  await ensurePaywallSchema();
+  // Brake on the cheap AI helpers so one account can't hammer them all day.
+  app.use(["/api/transcribe", "/api/enhance-story", "/api/story-helper", "/api/suggest-title", "/api/preview-voice"], dailyTextAiLimit);
   try { cleanUpVideoLeftovers(); } catch (e) { console.warn("[VideoGen] Cleanup skipped:", (e as Error).message); }
   storage.failInterruptedVideos()
     .then((n) => { if (n) console.log(`[VideoGen] Marked ${n} interrupted movie(s) as failed so they can be retried`); })
@@ -113,13 +117,9 @@ export async function registerRoutes(
     try {
       const parsed = insertStorySchema.parse(req.body);
       const story = await storage.createStory({ ...parsed, userId: userId(req), shareToken: null });
+      // No AI cover here (it cost a picture for every story, paid or not):
+      // the first storybook picture becomes the cover.
       res.status(201).json(story);
-
-      if (story.content && story.content.length > 30) {
-        generateCoverForStory(story.id, story.title, story.content).catch(err =>
-          console.error(`Background cover generation failed for story ${story.id}:`, err)
-        );
-      }
     } catch (error) {
       console.error("Error creating story:", error);
       res.status(400).json({ error: "Failed to create story" });
@@ -153,6 +153,10 @@ export async function registerRoutes(
       const story = await storage.getStory(id);
       if (!story) return res.status(404).json({ error: "Story not found" });
 
+      const hasPictures = (await storage.getIllustrations(id)).length > 0;
+      if (!hasPictures && !(await mayPaintCover(req, id))) {
+        return res.status(402).json({ error: "Make the storybook pictures first - the first one becomes the cover." });
+      }
       await generateCoverForStory(id, story.title, story.content);
       const updated = await storage.getStory(id);
       res.json(updated);
@@ -165,7 +169,12 @@ export async function registerRoutes(
   app.post("/api/stories/generate-covers", async (req, res) => {
     try {
       const stories = await storage.getStories(userId(req));
-      const needsCover = stories.filter(s => !s.coverImageUrl && s.content.length > 30);
+      const needsCover = [];
+      for (const s of stories) {
+        if (s.coverImageUrl || s.content.length <= 30) continue;
+        const hasPictures = (await storage.getIllustrations(s.id)).length > 0;
+        if (hasPictures || (await mayPaintCover(req, s.id))) needsCover.push(s);
+      }
       res.json({ message: `Generating covers for ${needsCover.length} stories in the background`, count: needsCover.length });
 
       for (const story of needsCover) {
@@ -192,6 +201,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/stories/:id/allowance", async (req, res) => {
+    try {
+      res.json(await getAllowance(req, parseInt(req.params.id)));
+    } catch (error) {
+      console.error("Error fetching allowance:", error);
+      res.status(500).json({ error: "Failed to fetch allowance" });
+    }
+  });
+
   app.get("/api/stories/:id/illustrations", async (req, res) => {
     try {
       const storyId = parseInt(req.params.id);
@@ -204,13 +222,20 @@ export async function registerRoutes(
   });
 
   app.post("/api/stories/:id/illustrations", async (req, res) => {
+    let refundPictures: (() => Promise<void>) | null = null;
     try {
       const storyId = parseInt(req.params.id);
       const { style, profileId, sceneCount: rawSceneCount } = req.body;
-      const sceneCount = Math.min(Math.max(parseInt(rawSceneCount) || 4, 2), 8);
+      let sceneCount = Math.min(Math.max(parseInt(rawSceneCount) || 4, 2), 8);
 
       const story = await storage.getStory(storyId);
       if (!story) return res.status(404).json({ error: "Story not found" });
+
+      // Who pays: free first storybook (2 pages), otherwise the story must be unlocked.
+      const claim = await claimPictureRun(req, storyId);
+      if (!claim.ok) return res.status(claim.status).json(claim.body);
+      if (claim.maxScenes) sceneCount = Math.min(sceneCount, claim.maxScenes);
+      refundPictures = claim.refund;
 
       let profile: any = null;
       if (profileId) {
@@ -534,6 +559,9 @@ Respond in valid JSON format ONLY:
       illustrationJobs.set(jobId, { status: wasCancelled ? "cancelled" : (completedCount > 0 ? "complete" : "failed"), totalScenes: scenes.length, completedScenes: completedCount, storyId, cancelled: wasCancelled });
       setTimeout(() => illustrationJobs.delete(jobId), 300000);
 
+      // Nothing came out: give the go back.
+      if (completedCount === 0 && refundPictures) await refundPictures().catch(() => {});
+
       if (completedCount > 0) {
         const allIllustrations = await storage.getIllustrations(storyId);
         const firstScene = allIllustrations.find(i => i.sceneOrder === 1) || allIllustrations[0];
@@ -544,6 +572,7 @@ Respond in valid JSON format ONLY:
       }
     } catch (error) {
       console.error("Error generating illustrations:", error);
+      if (refundPictures) await refundPictures().catch(() => {});
       if (!res.headersSent) {
         res.status(500).json({ error: "Failed to generate illustrations" });
       }
@@ -786,12 +815,18 @@ Return ONLY the finished story text.`,
   });
 
   app.post("/api/stories/:id/videos", async (req, res) => {
+    let refundMovie: (() => Promise<void>) | null = null;
     try {
       const storyId = parseInt(req.params.id);
       const { style, profileId, enableNarration } = req.body;
 
       const story = await storage.getStory(storyId);
       if (!story) return res.status(404).json({ error: "Story not found" });
+
+      // The movie is the expensive part: it must be paid for first.
+      const movieClaim = await claimMovieRun(req, storyId);
+      if (!movieClaim.ok) return res.status(movieClaim.status).json(movieClaim.body);
+      refundMovie = movieClaim.refund;
 
       let videoIsChildStory = false;
       let videoStorytellerAgeDesc = "";
@@ -1200,6 +1235,8 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
             status: "failed",
             scenes: [],
           });
+          // A failed movie doesn't use up one of their goes.
+          if (!/cancelled/i.test(errorMessage) && refundMovie) await refundMovie().catch(() => {});
           if (!/cancelled/i.test(errorMessage)) {
             try {
               const owner = story.userId ? await storage.getUser(story.userId) : undefined;
@@ -1213,6 +1250,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
       })();
     } catch (error) {
       console.error("Error creating video:", error);
+      if (refundMovie) await refundMovie().catch(() => {});
       res.status(500).json({ error: "Failed to start video generation" });
     }
   });

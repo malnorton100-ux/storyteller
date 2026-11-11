@@ -70,3 +70,14 @@ If a storyteller has recorded a voice sample in their profile, movie narration i
 | `VOICE_CLONE_MODEL` | `resemble-ai/chatterbox-multilingual` | any Replicate voice-cloning model |
 | `VOICE_CLONE_LANGUAGE` | `en` | language code for narration |
 | `VOICE_CLONE_INPUT` | *(preset)* | JSON of the model's inputs with `{{text}}`, `{{audio}}`, `{{language}}` placeholders, if you switch model |
+## Who pays for the AI (paywall)
+- Every new account gets **one free 2-page storybook**.
+- More pictures need any purchase on that story; the **movie needs the Movie or Bundle** purchase first.
+- Each purchase gives a few goes; failed attempts don't count. The owner (`ADMIN_EMAIL`) is never limited.
+- New stories no longer get an AI-painted cover; the first storybook picture becomes the cover.
+
+| Variable | Default | Note |
+|---|---|---|
+| `PICTURE_RUNS_PER_PURCHASE` | `5` | picture goes per purchase |
+| `MOVIE_RUNS_PER_PURCHASE` | `3` | movie goes per Movie/Bundle purchase |
+| `DAILY_TEXT_AI_LIMIT` | `150` | cheap AI calls (transcribe, story helper, titles) per account per day |
