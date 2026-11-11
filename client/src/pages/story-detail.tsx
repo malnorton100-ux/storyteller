@@ -516,7 +516,7 @@ export default function StoryDetail() {
           } else if (job.status === "cancelled") {
             // Already toasted from cancel button
           } else {
-            toast({ title: "Some illustrations may have failed", description: "Please try again.", variant: "destructive" });
+            toast({ title: "Pictures couldn't be made", description: job.error || "Please try again.", variant: "destructive" });
           }
         } else {
           queryClient.invalidateQueries({ queryKey: ["/api/stories", storyId] });

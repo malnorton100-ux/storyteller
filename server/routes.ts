@@ -17,7 +17,7 @@ import fs from "fs";
 import { execFileSync } from "child_process";
 import path from "path";
 
-const illustrationJobs = new Map<string, { status: "generating" | "complete" | "failed" | "cancelled"; totalScenes: number; completedScenes: number; storyId: number; cancelled?: boolean }>();
+const illustrationJobs = new Map<string, { status: "generating" | "complete" | "failed" | "cancelled"; totalScenes: number; completedScenes: number; storyId: number; cancelled?: boolean; error?: string }>();
 const cancelledVideoIds = new Set<number>();
 
 async function parallelBatch<T, R>(
@@ -237,6 +237,7 @@ export async function registerRoutes(
 
   app.post("/api/stories/:id/illustrations", async (req, res) => {
     let refundPictures: (() => Promise<void>) | null = null;
+    let startedJobId: string | null = null;
     try {
       const storyId = parseInt(req.params.id);
       const { style, profileId, sceneCount: rawSceneCount } = req.body;
@@ -250,6 +251,22 @@ export async function registerRoutes(
       if (!claim.ok) return res.status(claim.status).json(claim.body);
       if (claim.maxScenes) sceneCount = Math.min(sceneCount, claim.maxScenes);
       refundPictures = claim.refund;
+
+      // Only one picture job per story at a time (a second tap used to start a second set).
+      for (const [, j] of Array.from(illustrationJobs.entries())) {
+        if (j.storyId === storyId && j.status === "generating") {
+          await refundPictures().catch(() => {});
+          refundPictures = null;
+          return res.status(409).json({ error: "Pictures are already being painted for this story. They'll appear in a minute or two." });
+        }
+      }
+
+      // Answer the phone straight away; the planning below can take a minute,
+      // and phones gave up waiting (showing "failed") while pictures kept coming.
+      const jobId = `ill-${storyId}-${Date.now()}`;
+      startedJobId = jobId;
+      illustrationJobs.set(jobId, { status: "generating", totalScenes: sceneCount, completedScenes: 0, storyId });
+      res.status(202).json({ status: "generating", totalScenes: sceneCount, storyId, jobId });
 
       let profile: any = null;
       if (profileId) {
@@ -348,8 +365,9 @@ Respond in JSON:
 
       const storytellerDesc = charInfo?.storyteller?.description || (isChildStory ? "a young child with same ethnicity and skin tone as reference photo" : "the main character matching the reference photo");
       const storytellerAge = charInfo?.storyteller?.ageInStory || (isChildStory ? "about 10 years old" : "");
-      const storytellerOutfit = charInfo?.storyteller?.outfit || "";
       const storytellerIsChild = charInfo?.storyteller?.isChild ?? isChildStory;
+      // Children are always drawn modestly dressed, whatever the story says they wore.
+      const storytellerOutfit = storytellerIsChild ? "ordinary, modest, age-appropriate clothing for the activity and era (e.g. boardshorts and a T-shirt or rash vest at the beach)" : (charInfo?.storyteller?.outfit || "");
       const otherCharsSimple = Array.isArray(charInfo?.otherCharacters) ? charInfo.otherCharacters.join(", ") : "";
 
       const sceneSplitResponse = await openai.chat.completions.create({
@@ -439,10 +457,7 @@ Respond in valid JSON format ONLY:
         scenes = fallbackScenes;
       }
 
-      const jobId = `ill-${storyId}-${Date.now()}`;
       illustrationJobs.set(jobId, { status: "generating", totalScenes: scenes.length, completedScenes: 0, storyId });
-
-      res.status(202).json({ status: "generating", totalScenes: scenes.length, storyId, jobId });
 
       const profilePhotoPath = profile?.photoUrl ? path.join(PUBLIC_DATA_DIR, profile.photoUrl) : null;
       const illDir = path.join(PUBLIC_DATA_DIR, "images", "illustrations");
@@ -570,7 +585,7 @@ Respond in valid JSON format ONLY:
 
       const finalJob = illustrationJobs.get(jobId);
       const wasCancelled = finalJob?.cancelled;
-      illustrationJobs.set(jobId, { status: wasCancelled ? "cancelled" : (completedCount > 0 ? "complete" : "failed"), totalScenes: scenes.length, completedScenes: completedCount, storyId, cancelled: wasCancelled });
+      illustrationJobs.set(jobId, { status: wasCancelled ? "cancelled" : (completedCount > 0 ? "complete" : "failed"), totalScenes: scenes.length, completedScenes: completedCount, storyId, cancelled: wasCancelled, error: !wasCancelled && completedCount === 0 ? "The AI couldn't paint these pictures. Try the G rating, or change any details it might find unsuitable." : undefined });
       setTimeout(() => illustrationJobs.delete(jobId), 300000);
 
       // Nothing came out: give the go back.
@@ -587,6 +602,13 @@ Respond in valid JSON format ONLY:
     } catch (error) {
       console.error("Error generating illustrations:", error);
       if (refundPictures) await refundPictures().catch(() => {});
+      if (startedJobId) {
+        const j = illustrationJobs.get(startedJobId);
+        if (j) {
+          illustrationJobs.set(startedJobId, { ...j, status: "failed", error: friendlyAiError(error) });
+          setTimeout(() => illustrationJobs.delete(startedJobId!), 300000);
+        }
+      }
       if (!res.headersSent) {
         res.status(500).json({ error: friendlyAiError(error) });
       }
@@ -1056,8 +1078,8 @@ Respond in JSON:
 
           const vidStorytellerDesc = vidCharInfo?.storyteller?.description || (videoIsChildStory ? "a young child with same ethnicity as reference" : "the main character matching reference photo");
           const vidStorytellerAge = vidCharInfo?.storyteller?.ageInStory || (videoIsChildStory ? "about 10 years old" : "");
-          const vidStorytellerOutfit = vidCharInfo?.storyteller?.outfit || "";
           const vidStorytellerIsChild = vidCharInfo?.storyteller?.isChild ?? videoIsChildStory;
+          const vidStorytellerOutfit = vidStorytellerIsChild ? "ordinary, modest, age-appropriate clothing for the activity and era (e.g. boardshorts and a T-shirt or rash vest at the beach)" : (vidCharInfo?.storyteller?.outfit || "");
           const vidOtherCharsSimple = Array.isArray(vidCharInfo?.otherCharacters) ? vidCharInfo.otherCharacters.join(", ") : "";
 
           const sceneResponse = await openai.chat.completions.create({
@@ -1088,7 +1110,7 @@ RULES:
 - Same outfit (${vidStorytellerOutfit || "as above"}) in every scene
 - Other characters just need their role mentioned — don't over-describe them
 
-${videoContentRating === "M" ? "CONTENT: Mature — include dramatic tension, realistic body exposure for activity." : videoContentRating === "PG" ? "CONTENT: PG — tone down graphic violence but keep emotional weight." : "CONTENT: G — fully family-friendly, no violence or danger."}
+${videoContentRating === "M" ? "CONTENT: Mature — keep the dramatic tension and emotional intensity of the story." : videoContentRating === "PG" ? "CONTENT: PG — tone down graphic violence but keep emotional weight." : "CONTENT: G — fully family-friendly, no violence or danger."}
 
 Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
               },

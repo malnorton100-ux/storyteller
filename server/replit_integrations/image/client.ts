@@ -9,13 +9,24 @@ export const openai = new OpenAI(openaiConfig);
  * Generate an image and return as Buffer.
  * Uses IMAGE_MODEL (see server/config.ts).
  */
+/**
+ * Added to every picture prompt. Children in these stories are always drawn
+ * fully and modestly dressed, whatever the story says.
+ */
+export const CHILD_SAFE_RULE =
+  "SAFETY RULE (overrides everything above): any child or teenager shown is fully and modestly dressed in ordinary, age-appropriate clothing for the activity (e.g. boardshorts with a T-shirt or rash vest at the beach). Never revealing or minimal clothing on a child, and never pose, frame or crop to draw attention to a child's body.";
+
+function withSafety(prompt: string): string {
+  return `${prompt}\n\n${CHILD_SAFE_RULE}`;
+}
+
 export async function generateImageBuffer(
   prompt: string,
   size: "1024x1024" | "512x512" | "256x256" = "1024x1024"
 ): Promise<Buffer> {
   const response = await openai.images.generate({
     model: IMAGE_MODEL,
-    prompt,
+    prompt: withSafety(prompt),
     size,
     output_format: "png",
   } as any);
@@ -70,7 +81,7 @@ export async function generateImageWithReference(
 
   let response: any;
   try {
-    response = await openai.images.edit({ model: IMAGE_MODEL, image: images, prompt: safePrompt, size } as any);
+    response = await openai.images.edit({ model: IMAGE_MODEL, image: images, prompt: withSafety(safePrompt), size } as any);
   } catch (err) {
     if (!twoRefs) throw err;
     console.warn("[Image] Two-reference edit failed, retrying with the face only:", (err as Error).message);
