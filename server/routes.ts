@@ -107,6 +107,29 @@ function glassesLine(info: any): string {
     : "Does NOT wear glasses in any picture.";
 }
 
+/**
+ * Everyone else in the story, each with ONE fixed look and outfit, written as a
+ * single block that goes into every picture prompt so brothers, mums and dads
+ * wear the same thing on every page. Accepts the old ["dad (30s)"] format too.
+ */
+function castLine(info: any): string {
+  const list = Array.isArray(info?.otherCharacters) ? info.otherCharacters : [];
+  const lines = list
+    .map((c: any) => {
+      if (typeof c === "string") return c.trim();
+      if (!c || typeof c !== "object") return "";
+      const name = [c.name, c.role && c.name !== c.role ? `(${c.role})` : ""].filter(Boolean).join(" ") || c.role || "";
+      return [name, c.age && `age ${c.age}`, c.look, c.outfit && `wearing ${c.outfit}`].filter(Boolean).join(", ");
+    })
+    .filter(Boolean);
+  if (lines.length === 0) return "";
+  return `OTHER PEOPLE - each one looks EXACTLY like this and wears EXACTLY the same clothes on every page (never swap or change outfits between people or pages): ${lines.join("; ")}.`;
+}
+
+const CAST_JSON_HINT = `"otherCharacters": [
+    {"name": "their name as used in the story, or empty", "role": "e.g. older brother / dad / old fisherman", "age": "e.g. 14 / 40s", "look": "hair colour and style, build, one distinctive feature (e.g. curly sandy hair, freckles, tall and skinny)", "outfit": "ONE specific outfit with exact colours, e.g. 'navy T-shirt, grey boardshorts'. Use what the story says they wore; otherwise pick something era-appropriate. Children and teens are ALWAYS modestly dressed. Make each person's outfit clearly DIFFERENT from the storyteller's and from each other's so they are easy to tell apart."}
+  ],`;
+
 /** A movie that takes longer than this is marked failed (and the user emailed) instead of spinning forever. */
 const MOVIE_TIME_LIMIT_MS = Number(process.env.MOVIE_TIME_LIMIT_MINUTES || 25) * 60 * 1000;
 function withTimeLimit<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -361,7 +384,7 @@ Your job is to identify:
 ${story.era ? `The story is set in the ${story.era}.` : ""}
 ${profile?.appearanceDescription ? `The storyteller's CURRENT appearance (from a recent photo): ${profile.appearanceDescription}` : ""}
 
-FOCUS ALL YOUR EFFORT ON DESCRIBING THE STORYTELLER. The storyteller is the star — they must be described in rich detail at the correct age for the story. Other characters are secondary — just note their role (dad, mum, friend, etc.) and approximate age.
+FOCUS MOST OF YOUR EFFORT ON DESCRIBING THE STORYTELLER - they are the star and must be described in rich detail at the correct age for the story. Then give EVERY other person who appears (siblings, parents, friends, strangers) one fixed look and one fixed outfit, so they look the same on every page.
 
 Respond in JSON:
 {
@@ -372,7 +395,7 @@ Respond in JSON:
     "outfit": "one SPECIFIC outfit appropriate for the activity and era — name exact colors and garments, e.g. 'faded blue singlet, tan shorts, brown leather sandals'. If they are a child or teen, it MUST be modest and age-appropriate (e.g. a rash vest and boardshorts for the beach), whatever the story says.",
     "glasses": "yes or no - did they wear glasses AT THIS AGE? Only yes if the story says so, or they are an adult who wears glasses in the photo."
   },
-  "otherCharacters": ["dad (adult, 30s)", "friend (same age as storyteller)"],
+  ${CAST_JSON_HINT}
   "setting": "brief setting/location"
 }`
           },
@@ -395,7 +418,7 @@ Respond in JSON:
       const storytellerIsChild = charInfo?.storyteller?.isChild ?? isChildStory;
       // Children are always drawn modestly dressed, whatever the story says they wore.
       const storytellerOutfit = storytellerOutfitFor(storytellerIsChild, charInfo?.storyteller?.outfit || "", storyText);
-      const otherCharsSimple = Array.isArray(charInfo?.otherCharacters) ? charInfo.otherCharacters.join(", ") : "";
+      const otherCharsSimple = castLine(charInfo);
 
       const sceneSplitResponse = await openai.chat.completions.create({
         model: TEXT_MODEL,
@@ -432,14 +455,14 @@ The storyteller [STORYTELLER] is: ${storytellerDesc}.
 Age in this story: ${storytellerAge}.
 Outfit: ${storytellerOutfit || "appropriate for the activity and era"}.
 ${storytellerIsChild ? "CHILD RULES: Small body, smooth skin, NO tattoos, NO facial hair, NO wrinkles, NO adult features. Thick full-colored hair." : ""}
-${otherCharsSimple ? `Other characters in the story: ${otherCharsSimple}. (These are secondary — just make them look reasonable for their role. Do NOT make them look like the storyteller.)` : ""}
+${otherCharsSimple ? `${otherCharsSimple} (Do NOT make any of them look like the storyteller.)` : ""}
 
 RULES:
 1. Write [STORYTELLER] after the storyteller character in every page description where they appear, so the image AI knows who they are.
 2. Wherever the storyteller appears, repeat their EXACT physical description: height, build, face shape, skin tone, hair colour/style, and outfit. Copy-paste level consistency.
 3. Except on a "present": true page, the storyteller is EXACTLY ${storytellerAge} on every page — their body size and proportions NEVER change. ${storytellerIsChild ? `A ${storytellerAge} child is SMALL — shorter than adults, thin limbs, round face. They do NOT grow taller or more muscular in later scenes.` : ""}
 4. Same outfit in every scene: ${storytellerOutfit || "as described above"}.
-5. Other characters just need their role mentioned (e.g. "his dad" or "her friend") — don't over-describe them. NEVER describe an adult character with the storyteller's features.
+5. Wherever another person appears, name them and copy their look and outfit EXACTLY from the OTHER PEOPLE list above - same clothes on every page. NEVER describe an adult character with the storyteller's features.
 6. Show the people the page's text mentions; keep faces of background figures simple.
 
 Respond in valid JSON format ONLY:
@@ -521,6 +544,8 @@ Respond in valid JSON format ONLY:
           sc.camera ? `Camera: ${sc.camera}.` : "",
           `Use the reference image ONLY for the person's face, hair and outfit - do NOT copy its pose, framing, expression or camera angle.`,
           recurringObjects ? `These objects must look EXACTLY like this in every picture they appear in: ${recurringObjects}` : "",
+          otherCharsSimple,
+          `Keep the SAME art style, colours and level of detail as the rest of this storybook.`,
         ].filter(Boolean).join(" ");
 
       if (effectiveRefPath && fs.existsSync(effectiveRefPath)) {
@@ -580,8 +605,16 @@ Respond in valid JSON format ONLY:
               : effectiveRefPath && fs.existsSync(effectiveRefPath)
               ? await generateImageWithReference(effectiveRefPath, prompt, "1024x1024", consistencyRefPath)
               : await generateImageWithReference(consistencyRefPath, prompt, "1024x1024");
-          } catch {
-            imageBuffer = await generateImageBuffer(prompt, "1024x1024");
+          } catch (refErr) {
+            // Page 1 already has the right faces, outfits and style - try it on its own
+            // before falling back to a picture with no reference at all.
+            console.warn(`[Illustrations] Page ${i + 1} reference edit failed, retrying with page 1 only:`, (refErr as Error).message);
+            try {
+              imageBuffer = await generateImageWithReference(consistencyRefPath, prompt, "1024x1024");
+            } catch (refErr2) {
+              console.warn(`[Illustrations] Page ${i + 1} drawn WITHOUT a reference (may not match):`, (refErr2 as Error).message);
+              imageBuffer = await generateImageBuffer(prompt, "1024x1024");
+            }
           }
         } else {
           imageBuffer = await generateImageBuffer(prompt, "1024x1024");
@@ -1075,7 +1108,7 @@ Identify:
 ${story.era ? `The story is set in the ${story.era}.` : ""}
 ${videoProfile?.appearanceDescription ? `The storyteller's CURRENT appearance (from a recent photo): ${videoProfile.appearanceDescription}` : ""}
 
-FOCUS ALL YOUR EFFORT ON THE STORYTELLER. They are the star. Other characters are secondary — just note their role and approximate age.
+FOCUS MOST OF YOUR EFFORT ON THE STORYTELLER - they are the star. Then give EVERY other person who appears one fixed look and one fixed outfit, so they look the same in every scene.
 
 Respond in JSON:
 {
@@ -1086,7 +1119,7 @@ Respond in JSON:
     "outfit": "one SPECIFIC outfit — exact colors and garments. If they are a child or teen, it MUST be modest and age-appropriate (e.g. a rash vest and boardshorts for the beach), whatever the story says.",
     "glasses": "yes or no - did they wear glasses AT THIS AGE? Only yes if the story says so, or they are an adult who wears glasses in the photo."
   },
-  "otherCharacters": ["dad (adult, 30s)", "friend (same age)"],
+  ${CAST_JSON_HINT}
   "setting": "brief setting"
 }`
               },
@@ -1108,7 +1141,7 @@ Respond in JSON:
           const vidStorytellerAge = vidCharInfo?.storyteller?.ageInStory || (videoIsChildStory ? "about 10 years old" : "");
           const vidStorytellerIsChild = vidCharInfo?.storyteller?.isChild ?? videoIsChildStory;
           const vidStorytellerOutfit = storytellerOutfitFor(vidStorytellerIsChild, vidCharInfo?.storyteller?.outfit || "", story.content);
-          const vidOtherCharsSimple = Array.isArray(vidCharInfo?.otherCharacters) ? vidCharInfo.otherCharacters.join(", ") : "";
+          const vidOtherCharsSimple = castLine(vidCharInfo);
 
           const sceneResponse = await openai.chat.completions.create({
             model: TEXT_MODEL,
@@ -1130,13 +1163,13 @@ The storyteller [STORYTELLER] is: ${vidStorytellerDesc}.
 Age in this story: ${vidStorytellerAge}.
 Outfit: ${vidStorytellerOutfit || "appropriate for the activity and era"}.
 ${vidStorytellerIsChild ? "CHILD RULES: Small body, smooth skin, NO tattoos, NO facial hair, NO wrinkles. Thick full-colored hair." : ""}
-${vidOtherCharsSimple ? `Other characters: ${vidOtherCharsSimple}. (Secondary — just make them look reasonable. Do NOT make them look like the storyteller.)` : ""}
+${vidOtherCharsSimple ? `${vidOtherCharsSimple} (Do NOT make any of them look like the storyteller.)` : ""}
 
 RULES:
 - Write [STORYTELLER] after the storyteller in every scene prompt
 - Describe the storyteller in detail in every scene — face, body, age, expression, outfit. They are the STAR.
 - Same outfit (${vidStorytellerOutfit || "as above"}) in every scene
-- Other characters just need their role mentioned — don't over-describe them
+- Wherever another person appears, copy their look and outfit EXACTLY from the OTHER PEOPLE list - same clothes in every scene
 
 ${videoContentRating === "M" ? "CONTENT: Mature — keep the dramatic tension and emotional intensity of the story." : videoContentRating === "PG" ? "CONTENT: PG — tone down graphic violence but keep emotional weight." : "CONTENT: G — fully family-friendly, no violence or danger."}
 
@@ -1199,7 +1232,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
               ? `The reference image shows the storyteller [STORYTELLER] at ${vidStorytellerAge}. Draw them EXACTLY as they appear in the reference — same face, same hair, same build. ${glassesLine(vidCharInfo)} Outfit: ${vidStorytellerOutfit}. They are the STAR — the largest, most prominent figure. Any adult is a DIFFERENT person who must NOT resemble the reference.`
               : `THE STORYTELLER [STORYTELLER]: ${vidStorytellerDesc}. Age: ${vidStorytellerAge}. Outfit: ${vidStorytellerOutfit}. Apply the reference photo to the storyteller. They are the STAR.`;
             const vidChildNote = vidStorytellerIsChild ? `The storyteller is ${vidStorytellerAge} — draw them as a child/teen exactly matching the reference portrait. ` : "";
-            const prompt0 = `${scene0.prompt}. ${vidCharGuide0} ${vidChildNote}${appearanceInstruction}${styleInstruction}. No text or words in the image. Cinematic widescreen composition, 16:9 aspect ratio.`;
+            const prompt0 = `${scene0.prompt}. ${vidCharGuide0} ${vidOtherCharsSimple} ${vidChildNote}${appearanceInstruction}${styleInstruction}. No text or words in the image. Cinematic widescreen composition, 16:9 aspect ratio.`;
             console.log(`Generating video scene 1/${scenesParsed.length} (consistency anchor, child=${vidStorytellerIsChild})...`);
             try {
               const buf0 = await generateImageWithReference(videoEffectiveRefPath, prompt0, "1024x1024");
@@ -1223,7 +1256,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
             const vidSceneCharGuide = vidStorytellerIsChild
               ? `The reference image shows the storyteller [STORYTELLER] as a child/teen. Match them EXACTLY — same face, same hair, same body size, same outfit (${vidStorytellerOutfit}). ${glassesLine(vidCharInfo)} Age: ${vidStorytellerAge}. They must look identical across all scenes. Any adults are DIFFERENT people.`
               : `THE STORYTELLER [STORYTELLER]: ${vidStorytellerDesc}. Age: ${vidStorytellerAge}. Outfit: ${vidStorytellerOutfit}. Must look IDENTICAL to reference. They are the STAR.`;
-            const fullPrompt = `${scene.prompt}. ${vidSceneCharGuide} ${appearanceInstruction}${styleInstruction}. No text or words in the image. Cinematic widescreen composition, 16:9 aspect ratio.`;
+            const fullPrompt = `${scene.prompt}. ${vidSceneCharGuide} ${vidOtherCharsSimple} Keep the SAME art style and colours as the other scenes. ${appearanceInstruction}${styleInstruction}. No text or words in the image. Cinematic widescreen composition, 16:9 aspect ratio.`;
 
             console.log(`Generating video scene ${i + 1}/${scenesParsed.length}...`);
             let imageBuffer: Buffer;
