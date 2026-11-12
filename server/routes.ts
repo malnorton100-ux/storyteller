@@ -101,6 +101,18 @@ function storytellerOutfitFor(isChild: boolean, aiOutfit: string, storyText: str
     : "a plain navy T-shirt and khaki knee-length shorts";
 }
 
+/**
+ * True when the storyteller in the story is clearly younger than in their
+ * photo (a child, a teen, or an adult under 30), so the photo needs making
+ * younger before it's used as the face reference. Otherwise an 18-year-old
+ * gets drawn with a 50-year-old's face, glasses and hairline.
+ */
+function needsYoungerFace(info: any, isChild: boolean): boolean {
+  if (isChild) return true;
+  const m = String(info?.storyteller?.ageInStory || "").match(/\d+/);
+  return !!m && parseInt(m[0]) < 30;
+}
+
 /** One clear line about glasses so they don't come and go between pages. */
 function glassesLine(info: any): string {
   return String(info?.storyteller?.glasses || "").toLowerCase().startsWith("y")
@@ -124,12 +136,16 @@ function castLine(info: any): string {
     })
     .filter(Boolean);
   if (lines.length === 0) return "";
-  return `OTHER PEOPLE - each one looks EXACTLY like this and wears EXACTLY the same clothes on every page (never swap or change outfits between people or pages): ${lines.join("; ")}.`;
+  return `OTHER PEOPLE - each one looks EXACTLY like this and wears EXACTLY the same clothes on every page (never swap or change outfits between people or pages): ${lines.join("; ")}. ${GROUPS_LINE}`;
 }
 
 const CAST_JSON_HINT = `"otherCharacters": [
     {"name": "their name as used in the story, or empty", "role": "e.g. older brother / dad / old fisherman", "age": "e.g. 14 / 40s", "look": "hair colour and style, build, one distinctive feature (e.g. curly sandy hair, freckles, tall and skinny)", "outfit": "ONE specific outfit with exact colours, e.g. 'navy T-shirt, grey boardshorts'. Use what the story says they wore; otherwise pick something era-appropriate. Children and teens are ALWAYS modestly dressed. Make each person's outfit clearly DIFFERENT from the storyteller's and from each other's so they are easy to tell apart."}
-  ],`;
+  ],
+  "_note": "List INDIVIDUAL people only (a brother, a girlfriend, a teacher, one named bull rider). Do NOT list groups like cowboys, the crowd, riders, kids at school or soldiers - in pictures a group is always different people.",`;
+
+/** Stops crowds and groups being drawn as copies of one person. */
+const GROUPS_LINE = "Groups of people (riders, cowboys, a crowd, classmates, a team) are all DIFFERENT individuals - different faces, ages, builds, hair, hats and shirt colours. NEVER draw copies of the same person.";
 
 /** True when a story has no real title yet. */
 function needsTitle(title: unknown): boolean {
@@ -438,7 +454,7 @@ Respond in JSON:
     "isChild": true/false (true if under 18),
     "description": "DETAILED physical description for their age IN THE STORY. Start with: ethnicity, skin tone, eye color/shape, nose shape, face shape (from their current photo). Then age-adjust everything else: if they were a child, describe a child's body — small, lean, smooth skin, NO tattoos, NO facial hair, NO wrinkles, thick full-colored hair. If young adult, no grey hair, fewer lines, leaner build. Be very specific about what they looked like at that age.",
     "outfit": "one SPECIFIC outfit appropriate for the activity and era — name exact colors and garments, e.g. 'faded blue singlet, tan shorts, brown leather sandals'. If they are a child or teen, it MUST be modest and age-appropriate (e.g. a rash vest and boardshorts for the beach), whatever the story says.",
-    "glasses": "yes or no - did they wear glasses AT THIS AGE? Only yes if the story says so, or they are an adult who wears glasses in the photo."
+    "glasses": "yes or no - did they wear glasses AT THIS AGE? Only yes if the story says so, or they are 40 or older in the story and wear glasses in the photo. Someone younger than 40 in the story: no, unless the story mentions their glasses."
   },
   ${CAST_JSON_HINT}
   "setting": "brief setting/location"
@@ -484,7 +500,11 @@ MAKE THE BOOK VISUALLY VARIED - every page must look clearly different from the 
 - different shot each page: wide establishing shot, crowd scene, mid shot, close-up of hands or a face, low angle, high angle looking down a street, over-the-shoulder
 - different setting or time of day where the story allows
 - NO two pages in a row may share the same setting AND the same framing - if two pages happen in the same place, change the shot completely (e.g. wide shot of the whole shed, then a tight close-up of small hands hammering a nail)
-- the storyteller appears on most pages, caught mid-action and absorbed in the moment (never posing or looking at the camera), with a named emotion. Other people the text mentions SHOULD appear.
+- the PICTURE'S MAIN SUBJECT is whatever the page's text is about. If the text is about something the storyteller DID, they are the main subject, caught mid-action and absorbed in the moment (never posing or looking at the camera), with a named emotion. If the text is about something they WATCHED or that happened around them (a bull bucking, a rider thrown, a race, a storm, a band playing, a fight in the schoolyard), that ACTION is the main subject - big, dramatic and filling the frame, shown at its most exciting instant (the bull mid-buck with the rider in the air, the hat flying, the rider hitting the dirt). Then the storyteller is small at the edge of the frame or in the foreground (often seen from behind or the side, watching), or not in the picture at all.
+- Set "storyteller" on every page: "main" (they're the subject), "watching" (small, at the edge, the action is the subject) or "none" (not in the picture). At most half the pages may be "main" when the story is mostly about watching something.
+- the storyteller must NOT be in the same spot and pose on more than two pages (e.g. not sitting on the same fence page after page) - move the camera into the action instead.
+- Other people the text mentions SHOULD appear.
+- ${GROUPS_LINE}
 - If the story ends by looking back from the present day (e.g. "it's in my shed now"), make the LAST page a present-day scene of the storyteller as they look TODAY, and set "present": true for it.
 
 For each page also give a short caption (10 words max).
@@ -503,7 +523,7 @@ ${storytellerIsChild ? "CHILD RULES: Small body, smooth skin, NO tattoos, NO fac
 ${otherCharsSimple ? `${otherCharsSimple} (Do NOT make any of them look like the storyteller.)` : ""}
 
 RULES:
-1. Write [STORYTELLER] after the storyteller character in every page description where they appear, so the image AI knows who they are.
+1. Write [STORYTELLER] after the storyteller character in every page description where they appear, so the image AI knows who they are. On a "watching" page describe the ACTION first and in most detail, then the storyteller briefly. On a "none" page don't mention them.
 2. Wherever the storyteller appears, repeat their EXACT physical description: height, build, face shape, skin tone, hair colour/style, and outfit. Copy-paste level consistency.
 3. Except on a "present": true page, the storyteller is EXACTLY ${storytellerAge} on every page — their body size and proportions NEVER change. ${storytellerIsChild ? `A ${storytellerAge} child is SMALL — shorter than adults, thin limbs, round face. They do NOT grow taller or more muscular in later scenes.` : ""}
 4. Same outfit in every scene: ${storytellerOutfit || "as described above"}.
@@ -514,7 +534,7 @@ Respond in valid JSON format ONLY:
 {
   "recurring": "precise description of each object/place that appears in more than one scene, or empty string",
   "scenes": [
-  ${Array.from({ length: sceneCount }, () => '{"text": "exact words from the story for this page", "caption": "...", "description": "what the picture shows", "emotion": "...", "camera": "...", "present": false}').join(",\n  ")}
+  ${Array.from({ length: sceneCount }, () => '{"text": "exact words from the story for this page", "caption": "...", "description": "what the picture shows", "storyteller": "main | watching | none", "emotion": "...", "camera": "...", "present": false}').join(",\n  ")}
   ]
 }`
           },
@@ -523,7 +543,7 @@ Respond in valid JSON format ONLY:
         max_completion_tokens: sceneCount <= 4 ? 8000 : 12000,
       });
 
-      let scenes: { caption: string; description: string; emotion?: string; camera?: string; text?: string; present?: boolean }[] = [];
+      let scenes: { caption: string; description: string; storyteller?: string; emotion?: string; camera?: string; text?: string; present?: boolean }[] = [];
       let recurringObjects = "";
       try {
         const rawContent = sceneSplitResponse.choices[0]?.message?.content || "[]";
@@ -562,7 +582,7 @@ Respond in valid JSON format ONLY:
       let consistencyRefPath: string | null = null;
       let ageTransformedRefPath: string | null = null;
 
-      if (storytellerIsChild && profilePhotoPath && fs.existsSync(profilePhotoPath)) {
+      if (needsYoungerFace(charInfo, storytellerIsChild) && profilePhotoPath && fs.existsSync(profilePhotoPath)) {
         const ageTransformPrompt = `This is a photo of a real person. Generate a portrait of this SAME person but as a ${storytellerAge || "young teenager"}. Keep their EXACT same face — same eyes, same nose, same face shape, same skin tone, same ethnicity. Just make them younger: smooth skin, no wrinkles, full thick ${storytellerDesc.includes("dark") ? "dark" : "natural-colored"} hair, youthful features. Same person, just younger. ${glassesLine(charInfo)} Head and shoulders, three-quarter view, natural relaxed expression, looking slightly away from the camera, neutral background.`;
         console.log(`[Child story] Step 0: Generating age-transformed portrait (${storytellerAge})...`);
         try {
@@ -582,10 +602,18 @@ Respond in valid JSON format ONLY:
       // Direction added to every picture: candid action, real emotion, varied
       // framing, identical recurring objects. The reference image is for the
       // FACE and OUTFIT only - copying its pose made every picture a stiff portrait.
-      const sceneDirection = (sc: { emotion?: string; camera?: string }) =>
+      const roleOf = (sc: { storyteller?: string }) => {
+        const r = String(sc.storyteller || "").toLowerCase();
+        return r.startsWith("w") ? "watching" : r.startsWith("n") ? "none" : "main";
+      };
+      const sceneDirection = (sc: { storyteller?: string; emotion?: string; camera?: string }) =>
         [
-          `CANDID MOMENT, like a still from a family film: the storyteller is caught mid-action and absorbed in what is happening - NOT posing, NOT looking at the camera, NOT smiling for a photo.`,
-          sc.emotion ? `Their expression clearly shows: ${sc.emotion}.` : `Their face shows a clear, natural emotion that fits the moment.`,
+          roleOf(sc) === "main"
+            ? `CANDID MOMENT, like a still from a family film: the storyteller is caught mid-action and absorbed in what is happening - NOT posing, NOT looking at the camera, NOT smiling for a photo.`
+            : roleOf(sc) === "watching"
+            ? `ACTION SHOT: the ACTION described is the main subject - big, dramatic, filling most of the frame, caught at its most exciting instant. The storyteller is only SMALL, at the edge of the frame or in the foreground, watching. Do NOT make the storyteller the focus.`
+            : `ACTION SHOT: the action described is the whole picture, caught at its most exciting instant. The storyteller is NOT in this picture.`,
+          sc.emotion ? `${roleOf(sc) === "none" ? "The mood" : "Their expression"} clearly shows: ${sc.emotion}.` : "",
           sc.camera ? `Camera: ${sc.camera}.` : "",
           `Use the reference image ONLY for the person's face, hair and outfit - do NOT copy its pose, framing, expression or camera angle.`,
           recurringObjects ? `These objects must look EXACTLY like this in every picture they appear in: ${recurringObjects}` : "",
@@ -633,19 +661,23 @@ Respond in valid JSON format ONLY:
 
         const i = consistencyRefPath ? idx + 1 : idx;
         const isPresent = scene.present === true && !!profilePhotoPath && fs.existsSync(profilePhotoPath);
-        const sceneCharGuide = isPresent
+        const sceneCharGuide = roleOf(scene) === "none" && !isPresent
+          ? `Use the reference image only to match the art style, colours and setting.`
+          : isPresent
           ? `PRESENT DAY: this page shows the storyteller [STORYTELLER] as they look TODAY - match the person in the reference photo exactly, at their real current age. Not a child.`
           : storytellerIsChild
           ? `The reference image shows the storyteller [STORYTELLER] as a child/teen. Match them EXACTLY — same face, same hair, same body size, same outfit (${storytellerOutfit}). ${glassesLine(charInfo)} Age: ${storytellerAge}. They must look identical across all scenes. Any adults are DIFFERENT people.`
           : `THE STORYTELLER [STORYTELLER]: ${storytellerDesc}. Age: ${storytellerAge}. Outfit: ${storytellerOutfit}. Must look IDENTICAL to the person in the reference image. They are the STAR.`;
-        const prompt = `Illustrate this personal memory scene: "${scene.description}". ${sceneDirection(scene)} ${sceneCharGuide} ${appearanceInstruction}${styleInstruction} No text or words in the image. Make it warm, emotional, and nostalgic.`;
+        const prompt = `Illustrate this personal memory scene: "${scene.description}". ${sceneDirection(scene)} ${sceneCharGuide} ${roleOf(scene) === "none" ? "" : appearanceInstruction}${styleInstruction} No text or words in the image. Make it warm, emotional, and nostalgic.`;
 
         let imageBuffer: Buffer;
         if (consistencyRefPath && fs.existsSync(consistencyRefPath)) {
           try {
             // Face from the portrait, outfit/objects/style from page 1 - so pages
             // don't all inherit page 1's pose.
-            imageBuffer = isPresent
+            imageBuffer = roleOf(scene) === "none" && !isPresent
+              ? await generateImageWithReference(consistencyRefPath, prompt, "1024x1024")
+              : isPresent
               ? await generateImageWithReference(profilePhotoPath!, prompt, "1024x1024", consistencyRefPath)
               : effectiveRefPath && fs.existsSync(effectiveRefPath)
               ? await generateImageWithReference(effectiveRefPath, prompt, "1024x1024", consistencyRefPath)
@@ -1162,7 +1194,7 @@ Respond in JSON:
     "isChild": true/false (true if under 18),
     "description": "DETAILED physical description for their age IN THE STORY. Ethnicity, skin tone, eye color/shape, nose shape, face shape from current photo. Then age-adjust: if child — small, lean, smooth skin, NO tattoos, NO facial hair, thick full-colored hair. Be very specific.",
     "outfit": "one SPECIFIC outfit — exact colors and garments. If they are a child or teen, it MUST be modest and age-appropriate (e.g. a rash vest and boardshorts for the beach), whatever the story says.",
-    "glasses": "yes or no - did they wear glasses AT THIS AGE? Only yes if the story says so, or they are an adult who wears glasses in the photo."
+    "glasses": "yes or no - did they wear glasses AT THIS AGE? Only yes if the story says so, or they are 40 or older in the story and wear glasses in the photo. Someone younger than 40 in the story: no, unless the story mentions their glasses."
   },
   ${CAST_JSON_HINT}
   "setting": "brief setting"
@@ -1254,7 +1286,7 @@ Return ONLY valid JSON array: [{"prompt": "...", "caption": "..."}, ...]`
           let videoConsistencyRefPath: string | null = null;
           let videoAgeTransformedRefPath: string | null = null;
 
-          if (vidStorytellerIsChild && hasReferencePhoto) {
+          if (needsYoungerFace(vidCharInfo, vidStorytellerIsChild) && hasReferencePhoto) {
             const vidAgePrompt = `This is a photo of a real person. Generate a portrait of this SAME person but as a ${vidStorytellerAge || "young teenager"}. Keep their EXACT same face — same eyes, same nose, same face shape, same skin tone, same ethnicity. Just make them younger: smooth skin, no wrinkles, full thick hair, youthful features. Same person, just younger. ${glassesLine(vidCharInfo)} Head and shoulders, three-quarter view, natural relaxed expression, looking slightly away from the camera, neutral background.`;
             console.log(`[Child video] Step 0: Generating age-transformed portrait (${vidStorytellerAge})...`);
             try {
