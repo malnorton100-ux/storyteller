@@ -8,6 +8,7 @@ import { pool } from "./db";
 import { storage } from "./storage";
 import type { Story } from "@shared/schema";
 import { sendEmail, passwordResetEmail } from "./email";
+import { checkTesterCode, makeTester } from "./testers";
 
 declare module "express-session" {
   interface SessionData {
@@ -87,6 +88,7 @@ const registerSchema = z.object({
   name: z.string().trim().min(1, "Please enter your name").max(80),
   email: z.string().trim().toLowerCase().email("Please enter a valid email"),
   password: z.string().min(8, "Password must be at least 8 characters").max(200),
+  inviteCode: z.string().trim().max(60).optional(),
 });
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -155,15 +157,21 @@ export async function setupAuth(app: Express) {
   app.post("/api/auth/register", async (req, res) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
-    const { name, email, password } = parsed.data;
+    const { name, email, password, inviteCode } = parsed.data;
     try {
       if (await storage.getUserByEmail(email)) {
         return res.status(409).json({ error: "An account with that email already exists. Try logging in." });
+      }
+      if (inviteCode) {
+        const check = await checkTesterCode(inviteCode);
+        if (check === "wrong") return res.status(400).json({ error: "That invite code isn't right. Check it, or leave it empty to sign up normally." });
+        if (check === "full") return res.status(400).json({ error: "Sorry, all the tester spots have been taken. Leave the invite code empty to sign up normally." });
       }
       const isFirstUser = (await storage.countUsers()) === 0;
       const user = await storage.createUser({ username: email, password: await hashPassword(password), name });
       // The very first account (the app owner) inherits any stories/profiles made before accounts existed.
       if (isFirstUser) await storage.claimUnownedData(user.id);
+      if (inviteCode) await makeTester(user.id);
       await startSession(req, user.id);
       res.status(201).json(publicUser(user));
     } catch (err) {

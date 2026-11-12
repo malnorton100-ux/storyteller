@@ -10,6 +10,7 @@ import { isLumaConfigured, setReplicateToken, validateAndFixToken } from "./luma
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { userId, userOwnsStory, isOwner } from "./auth";
 import { VOICE_DIR, voiceSampleUrlFor, voiceSamplePath, moveVoiceSamplesPrivate } from "./voice-samples";
+import { isTesterStory } from "./testers";
 import { ensurePaywallSchema, claimPictureRun, claimMovieRun, getAllowance, mayPaintCover, dailyTextAiLimit } from "./paywall";
 import { PUBLIC_DATA_DIR, TEXT_MODEL, parseAiJson } from "./config";
 import express from "express";
@@ -2023,7 +2024,8 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
     try {
       const storyId = parseInt(req.params.id);
       // The app owner can download everything for free (for testing and their own family).
-      if (await isOwner(req)) {
+      // Testers get the same for the stories they've unlocked.
+      if ((await isOwner(req)) || (await isTesterStory(storyId))) {
         return res.json([{ id: 0, sessionId: userId(req), storyId, productType: "bundle_download", status: "paid", stripeSessionId: null, stripePaymentIntentId: null, createdAt: new Date() }]);
       }
       const purchasesList = await storage.getPurchasesForStory(userId(req), storyId);
@@ -2116,7 +2118,7 @@ Be extremely specific. ${photoCount > 1 ? "Cross-reference ALL photos for accura
     try {
       const storyId = parseInt(req.params.id);
       const purchasesList = await storage.getPurchasesForStory(userId(req), storyId);
-      const hasPdf = (await isOwner(req)) || purchasesList.some(p => p.productType === "pdf_download" || p.productType === "bundle_download");
+      const hasPdf = (await isOwner(req)) || (await isTesterStory(storyId)) || purchasesList.some(p => p.productType === "pdf_download" || p.productType === "bundle_download");
       if (!hasPdf) return res.status(403).json({ error: "Purchase required" });
 
       const story = await storage.getStory(storyId);

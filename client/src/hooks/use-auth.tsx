@@ -8,7 +8,7 @@ type AuthContextValue = {
   user: AuthUser | null;
   isLoading: boolean;
   login: (data: { email: string; password: string }) => Promise<AuthUser>;
-  register: (data: { name: string; email: string; password: string }) => Promise<AuthUser>;
+  register: (data: { name: string; email: string; password: string; inviteCode?: string }) => Promise<AuthUser>;
   logout: () => Promise<void>;
 };
 
@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: onSignedIn,
   });
   const registerMutation = useMutation({
-    mutationFn: (data: { name: string; email: string; password: string }) =>
+    mutationFn: (data: { name: string; email: string; password: string; inviteCode?: string }) =>
       postJson("/api/auth/register", data) as Promise<AuthUser>,
     onSuccess: onSignedIn,
   });

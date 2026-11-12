@@ -365,7 +365,7 @@ export default function StoryDetail() {
     enabled: storyId > 0,
   });
 
-  type Allowance = { owner: boolean; freeStorybook: boolean; picturesUnlocked: boolean; movieUnlocked: boolean; pictureRunsLeft: number; movieRunsLeft: number };
+  type Allowance = { owner: boolean; tester?: boolean; testerStoriesLeft?: number; freeStorybook: boolean; picturesUnlocked: boolean; movieUnlocked: boolean; pictureRunsLeft: number; movieRunsLeft: number };
   const { data: allowance, refetch: refetchAllowance } = useQuery<Allowance>({
     queryKey: ["/api/stories", storyId, "allowance"],
     queryFn: async () => {
@@ -824,6 +824,14 @@ export default function StoryDetail() {
       })()}
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+        {allowance?.tester && (
+          <p className="text-sm rounded-md bg-primary/10 text-primary px-3 py-2" data-testid="text-tester-banner">
+            You're a tester — everything is free.{" "}
+            {allowance.testerStoriesLeft
+              ? `${allowance.testerStoriesLeft} free ${allowance.testerStoriesLeft === 1 ? "story" : "stories"} left (a story counts once you make its pictures or movie).`
+              : "You've used all your free tester stories. The ones you made stay unlocked. Thanks for testing!"}
+          </p>
+        )}
         <div className="flex items-center justify-between gap-1">
           <Link href="/stories">
             <Button variant="outline" size="icon" className="rounded-full h-10 w-10" data-testid="button-back">

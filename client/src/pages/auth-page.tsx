@@ -80,6 +80,11 @@ export default function AuthPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Testers get a link like /?code=YARDFRIENDS, which fills this in for them.
+  const [inviteCode, setInviteCode] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("code") || ""; } catch { return ""; }
+  });
+  const [showInvite, setShowInvite] = useState(() => !!inviteCode);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
@@ -110,7 +115,7 @@ export default function AuthPage() {
         setNotice(data.message || "Check your email for a link to reset your password.");
         return;
       }
-      if (isRegister) await register({ name, email, password });
+      if (isRegister) await register({ name, email, password, inviteCode: inviteCode.trim() || undefined });
       else await login({ email, password });
     } catch (err: any) {
       setError(err.message);
@@ -250,6 +255,17 @@ export default function AuthPage() {
                   )}
                 </div>
                 )}
+                {isRegister && (showInvite ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="invite">Invite code</Label>
+                    <Input id="invite" autoCapitalize="characters" autoComplete="off" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} data-testid="input-invite-code" />
+                    <p className="text-xs text-muted-foreground">Only if someone gave you one. Testers get everything free.</p>
+                  </div>
+                ) : (
+                  <button type="button" className="text-sm text-primary hover:underline" onClick={() => setShowInvite(true)} data-testid="button-show-invite">
+                    Have an invite code?
+                  </button>
+                ))}
                 {mode === "forgot" && (
                   <p className="text-sm text-muted-foreground">Type the email you signed up with and we'll send you a link to choose a new password.</p>
                 )}
