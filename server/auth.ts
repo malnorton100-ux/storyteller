@@ -278,6 +278,31 @@ export async function setupAuth(app: Express) {
     }
   });
 
+  // ── Owner: set any account's password ───────────────────────────────
+  // For when a tester is locked out and reset emails can't be sent yet.
+  app.post("/api/owner/set-password", async (req, res) => {
+    if (!(await isOwner(req))) return res.status(404).json({ error: "Not found" });
+    const parsed = z
+      .object({
+        email: z.string().trim().toLowerCase().email("Please enter a valid email"),
+        password: z.string().min(8, "Password must be at least 8 characters").max(200),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+    const { email, password } = parsed.data;
+    try {
+      const user = await storage.getUserByEmail(email);
+      if (!user) return res.status(404).json({ error: "No account with that email. Check the spelling." });
+      await pool.query(`UPDATE users SET password = $1 WHERE id = $2`, [await hashPassword(password), user.id]);
+      await pool.query(`DELETE FROM "session" WHERE sess->>'userId' = $1`, [user.id]);
+      failedLogins.forEach((_v, k) => { if (k.startsWith(email + "|")) failedLogins.delete(k); });
+      res.json({ ok: true, message: `Password changed for ${email}. Log out, then log in with the new password.` });
+    } catch (err) {
+      console.error("Owner set-password error:", err);
+      res.status(500).json({ error: "Could not change the password. Please try again." });
+    }
+  });
+
   // Business details shown on the privacy and terms pages (set in Railway).
   app.get("/api/public-info", (_req, res) => {
     res.json({
