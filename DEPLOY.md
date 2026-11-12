@@ -82,6 +82,23 @@ If a storyteller has recorded a voice sample in their profile, movie narration i
 | `MOVIE_RUNS_PER_PURCHASE` | `2` | movie goes per Movie/Bundle purchase |
 | `DAILY_TEXT_AI_LIMIT` | `150` | cheap AI calls (transcribe, story helper, titles) per account per day |
 
+## Free testers (invite code)
+Friends can test everything for free. Send them a link like
+`https://YOUR-APP/?code=YARDFRIENDS` (the code fills in for them), or they tap
+"Have an invite code?" when signing up.
+
+- Each tester gets a set number of stories unlocked like "Everything" (pictures, movie, downloads), with the same remakes a paying customer gets.
+- A story only counts once they start making its pictures or movie. If the AI fails, it doesn't count.
+- Once all the spots are taken, the code stops working.
+- To switch testing off, delete `TESTER_CODE`. Existing testers keep the stories they've already unlocked.
+- Only new sign-ups can use the code (an existing account can't be turned into a tester).
+
+| Variable | Default | Note |
+|---|---|---|
+| `TESTER_CODE` | *(empty = off)* | the invite code, e.g. `YARDFRIENDS` (not case-sensitive) |
+| `TESTER_SPOTS` | `15` | how many people can use the code |
+| `TESTER_STORIES` | `5` | free stories per tester |
+
 ## Password reset emails
 "Forgot your password?" emails a 1-hour link through Resend. Needs `RESEND_API_KEY`, and `EMAIL_FROM` on a domain you've verified in Resend (e.g. `Storyteller <hello@yourdomain.com.au>`). Until a domain is verified, Resend only delivers to your own address.
 
