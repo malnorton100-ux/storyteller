@@ -26,6 +26,7 @@ import SharedStory from "@/pages/shared-story";
 import ResetPassword from "@/pages/reset-password";
 import { PrivacyPage, TermsPage } from "@/pages/legal";
 import Prompts from "@/pages/prompts";
+import OwnerPage from "@/pages/owner";
 
 function Router() {
   return (
@@ -38,6 +39,7 @@ function Router() {
       <Route path="/record" component={RecordStory} />
       <Route path="/timeline" component={Timeline} />
       <Route path="/profile" component={Profile} />
+      <Route path="/owner" component={OwnerPage} />
       <Route path="/shared/:token" component={SharedStory} />
       <Route component={NotFound} />
     </Switch>
