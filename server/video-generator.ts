@@ -7,6 +7,7 @@ import fs from "fs";
 import { voiceSamplePath } from "./voice-samples";
 import { animateImageToVideo, downloadVideo, isLumaConfigured, speakInOwnVoice } from "./luma-client";
 import { textToSpeech } from "./replit_integrations/audio/client";
+import { voiceCachePrefix } from "./delete-account";
 
 const execAsync = promisify(exec);
 
@@ -142,7 +143,8 @@ async function ownVoiceNarration(caption: string, ref: Buffer, refKey: string, t
   const cacheDir = path.join(PRIVATE_DATA_DIR, "narration-cache");
   fs.mkdirSync(cacheDir, { recursive: true });
   const key = crypto.createHash("sha1").update(refKey + "|" + caption).digest("hex");
-  const cached = path.join(cacheDir, `${key}.wav`);
+  // Starts with the voice's id so "delete my account" can find and remove these clips.
+  const cached = path.join(cacheDir, `${voiceCachePrefix(refKey)}-${key}.wav`);
   if (fs.existsSync(cached)) return cached;
 
   const pieces = splitForVoice(caption);

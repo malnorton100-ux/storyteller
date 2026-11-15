@@ -76,7 +76,12 @@ function ShowcaseVideo() {
 export default function AuthPage() {
   const { login, register } = useAuth();
   const [mode, setMode] = useState<"login" | "register" | "forgot">("register");
-  const [notice, setNotice] = useState<string | null>(null);
+  // After "Delete my account" the app comes back here with ?deleted=1.
+  const [notice, setNotice] = useState<string | null>(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("deleted")
+      ? "Your account and everything in it has been deleted."
+      : null,
+  );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
