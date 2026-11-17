@@ -80,7 +80,7 @@ export function PrivacyPage() {
       <p>Only upload photos or record voices of yourself, or of someone who has said yes. If a story is about someone under 18, a parent or guardian must be the one using the app.</p>
 
       <h2>How long we keep it</h2>
-      <p>We keep your stories and files while you have an account. You can delete a story, its pictures or movies, and your voice recording yourself in the app at any time. To delete your whole account and everything in it, email us and we'll do it within 30 days.</p>
+      <p>We keep your stories and files while you have an account. You can delete a story, its pictures or movies, and your voice recording yourself in the app at any time. To delete your whole account and everything in it, go to My Profile and tap "Delete my account" (or email us and we'll do it within 30 days). Your stories, pictures, movies, photos and voice recording are deleted straight away. We keep only a scrambled code made from your email that can't be turned back into it, so the free storybook can't be claimed twice, and payment records stay with Stripe as the law requires.</p>
 
       <h2>Security</h2>
       <p>Passwords are scrambled, connections are encrypted, and each person can only reach their own stories. No system is perfect, but if something ever went wrong with your information, we'd tell you.</p>

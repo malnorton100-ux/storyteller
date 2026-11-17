@@ -9,6 +9,7 @@ import { storage } from "./storage";
 import type { Story } from "@shared/schema";
 import { sendEmail, passwordResetEmail } from "./email";
 import { checkTesterCode, makeTester } from "./testers";
+import { ensureDeleteAccountSchema, restoreUsedFreebies, deleteAccount, cleanOldNarrationCache } from "./delete-account";
 
 declare module "express-session" {
   interface SessionData {
@@ -115,6 +116,8 @@ const PUBLIC_API = [
 
 export async function setupAuth(app: Express) {
   await ensureAuthSchema();
+  await ensureDeleteAccountSchema();
+  cleanOldNarrationCache();
 
   const isProd = process.env.NODE_ENV === "production";
   let secret = process.env.SESSION_SECRET;
@@ -171,6 +174,8 @@ export async function setupAuth(app: Express) {
       const user = await storage.createUser({ username: email, password: await hashPassword(password), name });
       // The very first account (the app owner) inherits any stories/profiles made before accounts existed.
       if (isFirstUser) await storage.claimUnownedData(user.id);
+      // Signed up before and deleted that account? Don't give the free storybook / tester stories again.
+      await restoreUsedFreebies(user.id, email);
       if (inviteCode) await makeTester(user.id);
       await startSession(req, user.id);
       res.status(201).json(publicUser(user));
@@ -300,6 +305,38 @@ export async function setupAuth(app: Express) {
     } catch (err) {
       console.error("Owner set-password error:", err);
       res.status(500).json({ error: "Could not change the password. Please try again." });
+    }
+  });
+
+  // ── Delete my account ───────────────────────────────────────────────
+  // Needs the password again so nobody can do it from an unlocked phone by accident.
+  app.post("/api/auth/delete-account", async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: "Please log in" });
+    const parsed = z.object({ password: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Please type your password to confirm" });
+    try {
+      const user = await storage.getUser(req.session.userId);
+      if (!user) return res.status(401).json({ error: "Please log in" });
+      if (await isOwner(req)) {
+        return res.status(400).json({ error: "This is the app owner's account, so it can't be deleted here." });
+      }
+      const key = `delete|${user.id}|${req.ip}`;
+      if (tooManyAttempts(key)) {
+        return res.status(429).json({ error: "Too many attempts. Please wait 15 minutes and try again." });
+      }
+      if (!(await verifyPassword(parsed.data.password, user.password))) {
+        recordFailure(key);
+        return res.status(401).json({ error: "That password isn't right" });
+      }
+      const removed = await deleteAccount(user.id);
+      console.log(`[auth] Account deleted (${removed} file(s) removed)`);
+      req.session.destroy(() => {
+        res.clearCookie("lw.sid");
+        res.json({ ok: true });
+      });
+    } catch (err) {
+      console.error("Delete account error:", err);
+      res.status(500).json({ error: "Could not delete your account. Please try again, or email us and we'll do it." });
     }
   });
 

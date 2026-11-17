@@ -9,6 +9,16 @@ import { useState, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { StorytellerProfile } from "@shared/schema";
 
 const VOICE_OPTIONS = [
@@ -535,6 +545,103 @@ function AdditionalPhotos({ profile }: { profile: StorytellerProfile }) {
   );
 }
 
+/** "Delete my account" - at the bottom of My Profile. Asks for the password to be sure. */
+function DeleteAccountCard() {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const close = () => {
+    if (busy) return;
+    setOpen(false);
+    setPassword("");
+    setError(null);
+  };
+
+  const confirmDelete = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/delete-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not delete your account. Please try again.");
+      // Gone - clear everything and go back to the front page.
+      queryClient.clear();
+      queryClient.setQueryData(["/api/auth/me"], null);
+      window.location.href = "/?deleted=1";
+    } catch (e: any) {
+      setError(e.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="border-destructive/30">
+      <CardContent className="p-5 space-y-3">
+        <h3 className="font-semibold text-lg">Your account</h3>
+        {user?.email && <p className="text-base text-muted-foreground">Signed in as {user.email}</p>}
+        <p className="text-base text-muted-foreground">
+          Deleting your account removes all your stories, storybooks, movies, photos and voice recording for good.
+          Download anything you want to keep first.
+        </p>
+        <Button
+          variant="outline"
+          className="w-full h-12 text-base border-destructive/50 text-destructive hover:bg-destructive/10"
+          onClick={() => setOpen(true)}
+          data-testid="button-delete-account"
+        >
+          <Trash2 className="mr-2 h-5 w-5" />
+          Delete my account
+        </Button>
+      </CardContent>
+
+      <AlertDialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl">Delete your account?</AlertDialogTitle>
+            <AlertDialogDescription className="text-base">
+              This deletes all your stories, storybooks, movies, photos and your voice recording. Shared links will stop
+              working. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="delete-password" className="text-base">Type your password to confirm</Label>
+            <Input
+              id="delete-password"
+              type="password"
+              autoComplete="current-password"
+              className="h-12 text-base"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              data-testid="input-delete-password"
+            />
+            {error && <p className="text-base text-destructive" data-testid="text-delete-error">{error}</p>}
+          </div>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel className="h-12 text-base" disabled={busy}>Keep my account</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              className="h-12 text-base"
+              disabled={!password || busy}
+              onClick={confirmDelete}
+              data-testid="button-confirm-delete-account"
+            >
+              {busy ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Deleting...</> : "Delete everything"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  );
+}
+
 export default function Profile() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -951,6 +1058,8 @@ export default function Profile() {
             </ul>
           </CardContent>
         </Card>
+
+        <DeleteAccountCard />
       </div>
     </div>
   );
