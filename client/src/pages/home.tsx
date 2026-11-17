@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Mic, PenLine, BookOpen, Clapperboard, Heart, ArrowRight, Library } from "lucide-react";
 import type { Story } from "@shared/schema";
 
-const heroImg = "/images/hero-storytelling.png";
+const heroImg = "/images/hero-shark.jpg";
 
 const ERA_LABELS: Record<string, string> = {
   "1940s": "The 1940s",
@@ -35,7 +35,7 @@ export default function Home() {
         <img
           src={heroImg}
           alt=""
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover object-[center_40%]"
           onError={(e) => { e.currentTarget.style.display = "none"; }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/20" />
